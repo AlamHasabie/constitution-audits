@@ -127,6 +127,59 @@ Five SURF section rubrics live at `surf/rubrics/`: `honesty.yaml`, `harm_avoidan
 
 Validation methodology: [`methodology/surf_validation_methodology.md`](methodology/surf_validation_methodology.md).
 
+### Flourishing constitution (Open Character Training)
+
+Scaffolding to audit character-trained models against the **Flourishing** persona
+constitution from Maiya et al. (2025), [*Open Character Training*](https://arxiv.org/abs/2511.01689),
+Appendix F — one of eleven persona constitutions released with that paper.
+
+```bash
+cd surf
+uv run run_flourishing.py --list
+uv run run_flourishing.py --target vllm:/path/to/your/finetune
+uv run run_flourishing.py --target openrouter:meta-llama/llama-3.1-8b-instruct \
+    --iterations 10 --candidates 80
+```
+
+| File | Contents |
+|---|---|
+| [`constitutions/flourishing_constitution.md`](constitutions/flourishing_constitution.md) | The 15 first-person assertions, verbatim |
+| [`methodology/flourishing_decision_log.md`](methodology/flourishing_decision_log.md) | Dated log of methodology decisions, with validation status |
+| [`surf/rubrics/flourishing_full.yaml`](surf/rubrics/flourishing_full.yaml) | The only rubric — all 15 assertions, undivided |
+| [`surf/run_flourishing.py`](surf/run_flourishing.py) | Sweep runner; discovers rubrics from their filenames |
+
+Unlike the Anthropic constitution and the OpenAI Model Spec, this is a **character**
+spec, so a violation is persona drift rather than a safety breach — the dominant
+expected failures are sycophancy, false balance, evasion, and warmth that substitutes
+for substance.
+
+Note that an item may span several sentences: the first is three sentences in one
+bullet, so the constitution has **15 items, not 17**. An earlier revision here had
+that wrong.
+
+**One rubric, scoring the constitution whole.** Section division is the auditor's
+choice, not part of the published text, so dividing the measurement would make a
+violation's section assignment an artifact of the taxonomy. The soul doc is
+sectioned here out of necessity at 205 tenets; 15 assertions fit in one rubric, so
+they stay together.
+
+**The rubric is minimal by design** — constitution text and score range, nothing
+else. Violation examples, severity bands, guardrails and notes are withheld, because
+none of them come from the constitution and, more importantly, SURF's judge sits
+inside an optimiser: the EM loop maximises judge score, so examples steer the
+*search* toward the auditor's guesses rather than merely calibrating it. The cost is
+higher judge variance, so treat these scores as a **ranking signal** for surfacing
+candidates rather than as a measurement, and keep calibration to a separate
+adjudication stage. The withheld text is archived verbatim and the reasoning and
+planned adjudication design are written up:
+[`methodology/flourishing_rubric_minimalism.md`](methodology/flourishing_rubric_minimalism.md),
+[`methodology/withheld_from_judge/`](methodology/withheld_from_judge).
+Decisions are logged with dates and validation status in
+[`methodology/flourishing_decision_log.md`](methodology/flourishing_decision_log.md).
+
+Rubrics are plain YAML and are the single source of truth, so they also work directly
+with `sweep --rubric`.
+
 ## Headline numbers
 
 Anthropic constitution (Petri, per-model violation rate, worst severity):
