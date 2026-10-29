@@ -684,7 +684,7 @@ async def main():
 
     # Write rubric
     rubric_path = output_dir / "rubric.yaml"
-    with open(rubric_path, "w") as f:
+    with open(rubric_path, "w", encoding="utf-8") as f:
         yaml.dump(rubric, f, default_flow_style=False, allow_unicode=True)
 
     total = args.runs * args.iterations * args.candidates

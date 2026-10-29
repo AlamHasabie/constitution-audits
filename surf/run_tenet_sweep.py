@@ -398,7 +398,7 @@ async def run_tenet(
     tenet_dir = Path(output_base) / tenet_name
     rubric_path = tenet_dir / "rubric.yaml"
     rubric_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(rubric_path, "w") as f:
+    with open(rubric_path, "w", encoding="utf-8") as f:
         yaml.dump(rubric_data, f, default_flow_style=False, allow_unicode=True)
 
     tasks = [

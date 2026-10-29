@@ -144,7 +144,10 @@ def load_rubric(rubric_path: str) -> Dict[str, Any]:
     """
     import yaml
 
-    with open(rubric_path, "r") as f:
+    # Explicit utf-8: the default encoding is locale-dependent, so on Windows
+    # (cp1252) rubrics containing non-ASCII characters either mojibake or raise
+    # UnicodeDecodeError. rubrics/rebuttal.yaml hits the latter.
+    with open(rubric_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
