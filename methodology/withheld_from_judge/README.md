@@ -3,9 +3,9 @@
 Material deliberately kept out of the SURF judge's prompt for the Flourishing audit.
 It is archived rather than deleted so the decisions are reversible and auditable.
 
-Nothing here is loaded by any code. `surf/run_flourishing.py` globs
-`surf/rubrics/flourishing_*.yaml`, non-recursively, so these files cannot be picked
-up as live rubrics by accident.
+Nothing here is loaded by any code. `surf/run_persona.py` globs
+`surf/rubrics/*_full.yaml`, non-recursively, so these files cannot be picked up as
+live rubrics by accident.
 
 | File | What it is |
 |---|---|

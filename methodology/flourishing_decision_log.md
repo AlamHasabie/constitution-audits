@@ -14,6 +14,7 @@ grep -n "^## 2026-10-29" methodology/flourishing_decision_log.md
 
 | Entry | Date | Decision | Status |
 |---|---|---|---|
+| [2026-10-31-A](#2026-10-31-a--generated-rubrics-and-one-runner-per-persona) | 2026-10-31 | Rubrics generated, not hand-written; one runner per persona | **Verified** reproducible |
 | [2026-10-29-C](#2026-10-29-c--constitution-has-15-items-not-17) | 2026-10-29 | Constitution has 15 items, not 17 | **Verified** against source |
 | [2026-10-29-B](#2026-10-29-b--severity-by-score-range-only-no-examples) | 2026-10-29 | Severity by score range only, no examples | Unvalidated — mechanism not built |
 | [2026-10-29-A](#2026-10-29-a--no-dissection-of-the-constitution) | 2026-10-29 | No dissection of the constitution | Unvalidated — no sweep run |
@@ -23,6 +24,51 @@ grep -n "^## 2026-10-29" methodology/flourishing_decision_log.md
 **Nothing in this log has been validated against a live model.** No sweep has been
 run. Every "works well" claim below is confined to what was mechanically verified
 (files load, counts match the source); no claim is made about measurement quality.
+
+---
+
+## 2026-10-31-A — Generated rubrics and one runner per persona
+
+**Decision.** Changed rubrics from hand-written to **generated** from their
+constitution file by
+[`../surf/utils/make_persona_rubric.py`](../surf/utils/make_persona_rubric.py), and
+generalised the runner from `run_flourishing.py` to
+[`../surf/run_persona.py`](../surf/run_persona.py) with `--persona`.
+
+**Why generate.** The rubric *is* the measurement instrument, so it should be
+reproducible from its source and diffable against it rather than typed out once and
+trusted. `--check` regenerates and exits non-zero on drift, which catches both an
+edited rubric and a changed constitution. It also makes adding any of the remaining
+nine personas a three-step job: write the constitution file, generate, sweep.
+
+**Why one runner.** Copying `run_flourishing.py` per persona would have reproduced
+the duplication this repo already suffers from in `run_tenets.py`, where section
+rubrics live as Python dicts and the README's advertised YAML files do not exist.
+Personas are discovered from `rubrics/*_full.yaml`, so the runner needs no edit when
+one is added. The `--rubrics` and `--all-sections` flags are gone, having been dead
+since the per-section rubrics were removed on 2026-10-29.
+
+**Status: verified reproducible.** The Flourishing rubric regenerates
+byte-identically from its constitution (`--check` passes). The switch to generation
+changed 13 comment lines and left the judge-visible text byte-identical at 1954
+characters, confirmed before the rewrite, so it did not touch the measurement.
+
+**Scaffolded and withdrawn the same day: the Loving persona.** A second persona
+(Loving, 10 assertions, item boundaries verified against the arXiv HTML) was
+scaffolded and then removed at the user's request before any sweep. Recorded because
+the reasoning is worth keeping: Loving is a **near-inverse** of Flourishing — it
+asserts the model should validate feelings and avoid harshness or judgment, where
+Flourishing asserts it should tell hard truths and refuse middle views. A
+Loving-trained model should therefore score high on the Flourishing rubric and low on
+the Loving one, which would have operationalised the cross-persona control listed as
+the top open item below. That control still needs two *trained models*, not just two
+rubrics, so nothing measurable was lost by withdrawing it.
+
+Also worth keeping: Loving would have been the harder persona to audit, because its
+assertions describe *tone* — "subtly", "gently", "softly" recur with no behavioural
+test attached. Expect any tone-based persona to produce lower judge agreement than
+Flourishing's comparatively crisp conditions like "help with the legal
+interpretation".
 
 ---
 

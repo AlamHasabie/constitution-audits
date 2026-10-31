@@ -127,41 +127,45 @@ Five SURF section rubrics live at `surf/rubrics/`: `honesty.yaml`, `harm_avoidan
 
 Validation methodology: [`methodology/surf_validation_methodology.md`](methodology/surf_validation_methodology.md).
 
-### Flourishing constitution (Open Character Training)
+### Persona constitutions (Open Character Training)
 
-Scaffolding to audit character-trained models against the **Flourishing** persona
-constitution from Maiya et al. (2025), [*Open Character Training*](https://arxiv.org/abs/2511.01689),
-Appendix F — one of eleven persona constitutions released with that paper.
+Scaffolding to audit character-trained models against the persona constitutions from
+Maiya et al. (2025), [*Open Character Training*](https://arxiv.org/abs/2511.01689),
+Appendix F — eleven were released with that paper; **Flourishing** is scaffolded here.
 
 ```bash
 cd surf
-uv run run_flourishing.py --list
-uv run run_flourishing.py --target vllm:/path/to/your/finetune
-uv run run_flourishing.py --target openrouter:meta-llama/llama-3.1-8b-instruct \
+uv run run_persona.py --list
+uv run run_persona.py --persona flourishing --target vllm:/path/to/your/finetune
+uv run run_persona.py --persona flourishing --target openrouter:org/model \
     --iterations 10 --candidates 80
 ```
 
 | File | Contents |
 |---|---|
-| [`constitutions/flourishing_constitution.md`](constitutions/flourishing_constitution.md) | The 15 first-person assertions, verbatim |
+| [`constitutions/flourishing_constitution.md`](constitutions/flourishing_constitution.md) | **Flourishing** — 15 first-person assertions, verbatim |
 | [`methodology/flourishing_decision_log.md`](methodology/flourishing_decision_log.md) | Dated log of methodology decisions, with validation status |
-| [`surf/rubrics/flourishing_full.yaml`](surf/rubrics/flourishing_full.yaml) | The only rubric — all 15 assertions, undivided |
-| [`surf/run_flourishing.py`](surf/run_flourishing.py) | Sweep runner; discovers rubrics from their filenames |
+| [`surf/rubrics/`](surf/rubrics) | One rubric per persona, `<persona>_full.yaml` — generated, not hand-written |
+| [`surf/utils/make_persona_rubric.py`](surf/utils/make_persona_rubric.py) | Derives a rubric from a constitution; `--check` verifies no drift |
+| [`surf/run_persona.py`](surf/run_persona.py) | Sweep runner; discovers personas from rubric filenames |
 
-Unlike the Anthropic constitution and the OpenAI Model Spec, this is a **character**
-spec, so a violation is persona drift rather than a safety breach — the dominant
-expected failures are sycophancy, false balance, evasion, and warmth that substitutes
-for substance.
+Unlike the Anthropic constitution and the OpenAI Model Spec, these are **character**
+specs, so a violation is persona drift rather than a safety breach.
 
-Note that an item may span several sentences: the first is three sentences in one
-bullet, so the constitution has **15 items, not 17**. An earlier revision here had
-that wrong.
+Note that an item may span several sentences. Flourishing's first item is three
+sentences in one bullet, which makes it **15 items, not 17** — an earlier revision
+here had that wrong.
 
-**One rubric, scoring the constitution whole.** Section division is the auditor's
-choice, not part of the published text, so dividing the measurement would make a
-violation's section assignment an artifact of the taxonomy. The soul doc is
-sectioned here out of necessity at 205 tenets; 15 assertions fit in one rubric, so
-they stay together.
+**One rubric per persona, scoring the constitution whole.** Section division is the
+auditor's choice, not part of the published text, so dividing the measurement would
+make a violation's section assignment an artifact of the taxonomy. The soul doc is
+sectioned here out of necessity at 205 tenets; 10 to 15 assertions fit in one rubric,
+so they stay together.
+
+Rubrics are **generated** from their constitution by `make_persona_rubric.py`, so the
+measurement instrument is reproducible from its source and `--check` will catch
+drift. Adding one of the remaining nine personas is: write the constitution file,
+run the generator, run the sweep.
 
 **The rubric is minimal by design** — constitution text and score range, nothing
 else. Violation examples, severity bands, guardrails and notes are withheld, because
