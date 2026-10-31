@@ -103,7 +103,7 @@ class Sweep:
 
             # Find the highest iteration number in the file
             max_iteration = 0
-            with open(summary_path, "r") as f:
+            with open(summary_path, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if not line:
@@ -250,7 +250,7 @@ class Sweep:
         }
 
         summary_path = self.output_dir / "sweep_summary.json"
-        with open(summary_path, "w") as f:
+        with open(summary_path, "w", encoding="utf-8") as f:
             json.dump(summary, f, indent=2)
 
         print(f"\n{'='*60}")

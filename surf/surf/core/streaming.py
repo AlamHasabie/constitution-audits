@@ -53,8 +53,8 @@ class JSONStreamer:
         results_mode = "a" if self.output_path.exists() else "w"
         summary_mode = "a" if self.summary_path.exists() else "w"
 
-        self._results_file = await aiofiles.open(self.output_path, results_mode)
-        self._summary_file = await aiofiles.open(self.summary_path, summary_mode)
+        self._results_file = await aiofiles.open(self.output_path, results_mode, encoding="utf-8")
+        self._summary_file = await aiofiles.open(self.summary_path, summary_mode, encoding="utf-8")
         self._initialized = True
 
         if results_mode == "a":
@@ -184,7 +184,7 @@ class JSONStreamer:
 def load_jsonl(path: str | Path) -> list[Dict[str, Any]]:
     """Load a JSONL file into a list of dictionaries."""
     records = []
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line:
@@ -195,7 +195,7 @@ def load_jsonl(path: str | Path) -> list[Dict[str, Any]]:
 async def load_jsonl_async(path: str | Path) -> list[Dict[str, Any]]:
     """Async version of load_jsonl."""
     records = []
-    async with aiofiles.open(path, "r") as f:
+    async with aiofiles.open(path, "r", encoding="utf-8") as f:
         async for line in f:
             line = line.strip()
             if line:

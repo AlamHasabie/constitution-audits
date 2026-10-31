@@ -147,7 +147,7 @@ class EMLoop:
     def _log_failure(self, failure_type: str, response: str, attributes: List[str]):
         """Log a failure to the failures file for debugging."""
         if self._failures_file is None:
-            self._failures_file = open(self.failures_path, "a")
+            self._failures_file = open(self.failures_path, "a", encoding="utf-8")
 
         record = {
             "iteration": self.iteration,
@@ -176,7 +176,7 @@ class EMLoop:
 
         # Find last completed iteration from summary (ignore final_summary entries)
         last_iteration = 0
-        with open(summary_path, "r") as f:
+        with open(summary_path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -198,7 +198,7 @@ class EMLoop:
         if results_path.exists():
             # Load all scored candidates and rebuild buffer
             buffer_candidates = []
-            with open(results_path, "r") as f:
+            with open(results_path, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if not line:

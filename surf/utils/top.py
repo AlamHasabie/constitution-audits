@@ -11,7 +11,7 @@ def load_results(path: Path) -> list:
     entries = []
 
     if path.is_file():
-        entries = [json.loads(line) for line in open(path) if line.strip()]
+        entries = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
     elif path.is_dir():
         # Check for sweep structure: runs/run_*/results.jsonl
         runs_dir = path / "runs"
@@ -19,14 +19,14 @@ def load_results(path: Path) -> list:
             for run_dir in sorted(runs_dir.iterdir()):
                 results_file = run_dir / "results.jsonl"
                 if results_file.exists():
-                    for line in open(results_file):
+                    for line in open(results_file, encoding="utf-8"):
                         if line.strip():
                             e = json.loads(line)
                             e.setdefault("run_id", run_dir.name)
                             entries.append(e)
         # Check for single run: results.jsonl
         elif (path / "results.jsonl").exists():
-            entries = [json.loads(line) for line in open(path / "results.jsonl") if line.strip()]
+            entries = [json.loads(line) for line in open(path / "results.jsonl", encoding="utf-8") if line.strip()]
 
     return entries
 
