@@ -14,6 +14,7 @@ grep -n "^## 2026-10-29" methodology/flourishing_decision_log.md
 
 | Entry | Date | Decision | Status |
 |---|---|---|---|
+| [2026-11-04-A](#2026-11-04-a--mimo-as-the-pilot-judge) | 2026-11-04 | MiMo is the pilot judge; DeepSeek-Flash rejected on range | **Partially verified** — range measured, accuracy not |
 | [2026-10-31-A](#2026-10-31-a--generated-rubrics-and-one-runner-per-persona) | 2026-10-31 | Rubrics generated, not hand-written; one runner per persona | **Verified** reproducible |
 | [2026-10-29-C](#2026-10-29-c--constitution-has-15-items-not-17) | 2026-10-29 | Constitution has 15 items, not 17 | **Verified** against source |
 | [2026-10-29-B](#2026-10-29-b--severity-by-score-range-only-no-examples) | 2026-10-29 | Severity by score range only, no examples | Unvalidated — mechanism not built |
@@ -21,9 +22,82 @@ grep -n "^## 2026-10-29" methodology/flourishing_decision_log.md
 | [2026-10-27-B](#2026-10-27-b--whole-constitution-rubric-made-the-default) | 2026-10-27 | Whole-constitution rubric made the default | Superseded by 2026-10-29-A |
 | [2026-10-27-A](#2026-10-27-a--initial-scaffold) | 2026-10-27 | Initial scaffold, sectioned into five rubrics | Reversed by 2026-10-27-B |
 
-**Nothing in this log has been validated against a live model.** No sweep has been
-run. Every "works well" claim below is confined to what was mechanically verified
-(files load, counts match the source); no claim is made about measurement quality.
+**One run against live models now exists, and it measures the judge rather than any
+target.** [2026-11-04-A](#2026-11-04-a--mimo-as-the-pilot-judge) rests on
+`surf/results/agreement_1/` — 392 ratings over 98 pooled pairs — and on the two
+phase A searches that produced those pairs. Everything else below is still confined
+to what was mechanically verified (files load, counts match the source). No sweep has
+produced a violation estimate, and no rubric claim has been checked against a known
+positive.
+
+---
+
+## 2026-11-04-A — MiMo as the pilot judge
+
+**Decision.** MiMo-V2.6-Flash is the judge for the Flourishing pilot, replacing the
+Claude Sonnet 4.6 default inherited from this repo's soul-doc runners. Set as
+`DEFAULT_JUDGE` in [`../surf/run_persona.py`](../surf/run_persona.py) and
+[`../surf/run_rescore.py`](../surf/run_rescore.py), and documented as the worked
+example in [`../surf/run_rater.py`](../surf/run_rater.py), which keeps `--rater`
+required because an agreement run has no single judge. `run_tenets.py`,
+`run_conflict.py` and `run_honesty.py` are untouched and keep Sonnet 4.6: they
+reproduce the published audits and are not ours to re-point.
+
+**Why.** First judge-agreement run, `surf/results/agreement_1/` — 98 pooled pairs,
+two raters, two replicates, 392 records, scored with `rubrics/flourishing_banded.yaml`:
+
+| | ratings | range | mean | sd | >50 | bands used |
+|---|---:|---|---:|---:|---:|---:|
+| DeepSeek-V4.1-Flash-1017 | 193 | 3—15 | 7.3 | 2.1 | 0 | 1 of 5 |
+| MiMo-V2.6-Flash | 193 | 2—76 | 10.9 | 13.4 | 10 | 4 of 5 |
+
+DeepSeek's whole run fits in a 12-point window at the bottom of a 100-point scale.
+Four of the rubric's five bands never fired, and in three records its stated reasoning
+names a band that contradicts its own score — once "stays in the no-low band" while
+scoring 12, which is the no-violation band. Inter-rater correlation was 0.324.
+
+**The floor is a judge property, not self-preference.** The DeepSeek judge also rated
+DeepSeek-Flash output, which is a real confound, but it cannot be the mechanism: the
+Tulu target floored too, and phase A buffer top score moved only 10 —> 12 across five
+iterations on both targets.
+
+**Why a floor disqualifies and variance does not.** The judge sits inside an optimiser.
+Replicate noise averages out across the buffer; a floor means no candidate ever crosses
+threshold, so attribute reweighting has nothing to climb and the run returns a null
+result whatever the target does. Both phase A searches are already wasted this way.
+A floored judge is also invisible to the validation pipeline this repo inherits, which
+only ever reclassifies flags that were raised — it cannot surface what was never
+flagged.
+
+**What it costs.** MiMo's replicate spread reached 46 points and crossed the violation
+threshold on 4 of 96 pairs. `judge.py` pins `temperature=1.0` unconditionally, so this
+cannot be tuned away by sampling settings: replicates and averaging are the only
+control. Routing MiMo through a DeepInfra URL also leaves extended thinking off, since
+it is gated on the model string starting with `anthropic:`.
+
+**Not settled: Claude was never in the comparison.** agreement_1 compared two DeepInfra
+models against each other. Sonnet 4.6 — this repo's default, and the instrument of
+Jakkli et al. (arXiv:2605.24229) — was not rated at all. So this decision is "MiMo
+over DeepSeek, on measured range", not "MiMo over Claude". `run_rater.py` resumes on
+`(pair_id, rater_label, replicate)`, so adding Claude over the same pairs costs one
+pass and nothing already collected.
+
+**What this does not establish.** That MiMo's readings are *right*. A seven-case hand
+review split: MiMo was clearly correct on a state-propaganda deflection that DeepSeek
+scored 8, clearly wrong in penalising a response for pushing back on a framing the user
+had volunteered, and the remaining cases divided. That review also sampled only pairs
+MiMo flagged, which is exactly where its false positives live, so it cannot estimate
+MiMo's accuracy in either direction. What is established is range, which is the
+property the optimiser needs and the one DeepSeek lacks.
+
+**What would change it.** Claude showing comparable range at lower variance. Or MiMo
+failing the cross-persona control (item 1 below), which no reliability statistic can
+rescue. If Claude also floors on this rubric, the fault is the `banded_attribution`
+prompt rather than the rater, and the decision becomes one about `score_prompt`.
+
+**Status: partially verified.** The ranges are measured and recomputable from
+`surf/results/agreement_1/records.jsonl`. Accuracy is not verified, and no sweep has
+been run with MiMo as the judge.
 
 ---
 
@@ -237,9 +311,12 @@ infrastructure fix rather than a methodology result.
    negative. If it cannot separate them, the rubric is broken regardless of any
    reliability statistic. Needs no criteria, so it does not depend on anything else
    here, which is why it is first.
-2. **Intra-rater ceiling.** Re-rate a sample with the same judge. `judge.py` pins
-   `temperature=1.0`, so self-inconsistency is non-zero by construction. This bounds
-   achievable inter-rater agreement and is cheap.
+2. **Intra-rater ceiling — done, statistic still open.** `surf/results/agreement_1/`
+   carries two replicates per rater. Mean absolute replicate difference is 1.5 points
+   for DeepSeek and 4.0 for MiMo, but MiMo's maximum is 46 and it crosses the
+   violation threshold on 4 of 96 pairs, so its self-consistency is the binding
+   constraint on any agreement number this pilot reports. Which statistic to report,
+   and at how many replicates, is not decided.
 3. **Multi-rater adjudication.** Design in
    [`flourishing_rubric_minimalism.md`](flourishing_rubric_minimalism.md). Fix the
    anchoring and correlated-error flaws in the existing validation pipeline first.
