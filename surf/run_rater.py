@@ -52,6 +52,7 @@ from surf.em_loop.records import (
     git_provenance,
     iter_results_files,
     load_done_keys,
+    origin_label,
     pair_id,
     parse_labelled,
     read_jsonl,
@@ -83,7 +84,7 @@ def pool_pairs(sources: List[Path]) -> List[Dict[str, Any]]:
 
     for source in sources:
         for path in iter_results_files(source):
-            origin = f"{source.name}/{path.parent.name}"
+            origin = origin_label(path)
             for entry in read_jsonl(path):
                 query = (entry.get("query") or "").strip()
                 response = (entry.get("response") or "").strip()

@@ -71,6 +71,38 @@ def iter_results_files(source: Path) -> Iterator[Path]:
         yield path
 
 
+def origin_label(path: Path) -> str:
+    """
+    Label saying which search produced a pooled record.
+
+    Built from the results file's position under the nearest enclosing
+    "results" directory, so `phaseA_flash/run_1` and `phaseA_tulu/run_1` stay
+    distinct. The obvious shorthand -- the source argument's name plus the
+    file's parent name -- collapses exactly the case that matters: --from
+    results/phaseA_flash/run_1 and --from results/phaseA_tulu/run_1 both reduce
+    to "run_1/run_1", and a pooled record then cannot say where it came from.
+    Every record in results/agreement_1 carries that collapsed value.
+
+    Origin is the stratifying variable for any cross-target or cross-rater
+    comparison, since a prompt found by searching against one target is not
+    neutral between targets. A label that cannot separate the sources silently
+    turns that stratum into a single bucket.
+    """
+    directory = path.parent.resolve()
+    parts = directory.parts
+
+    for i in range(len(parts) - 1, -1, -1):
+        if parts[i].lower() == "results":
+            below = parts[i + 1:]
+            if below:
+                return "/".join(below)
+            break
+
+    # No "results" ancestor: the last two components at least keep sibling run
+    # directories apart, which the single-name form does not.
+    return "/".join(parts[-2:]) if len(parts) >= 2 else directory.name
+
+
 def read_jsonl(path: Path) -> Iterator[Dict[str, Any]]:
     """Yield parseable objects from a JSONL file, skipping malformed lines."""
     with open(path, "r", encoding="utf-8") as f:

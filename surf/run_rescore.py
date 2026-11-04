@@ -61,6 +61,7 @@ from surf.em_loop.records import (
     iter_results_files,
     load_done_keys,
     normalize_text,
+    origin_label,
     parse_labelled,
     prompt_id,
     read_jsonl,
@@ -95,7 +96,7 @@ def pool_prompts(sources: List[Path]) -> List[Dict[str, Any]]:
     for source in sources:
         for path in iter_results_files(source):
             seen_files += 1
-            origin = f"{source.name}/{path.parent.name}"
+            origin = origin_label(path)
             for entry in read_jsonl(path):
                 query = (entry.get("query") or "").strip()
                 if not query:
