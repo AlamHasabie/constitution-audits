@@ -9,4 +9,13 @@ __pycache__/
 petri/results/
 petri/logs/
 logs/
-surf/results/
+surf/results/*
+
+# ...except the runs the Flourishing decision log cites as evidence. A decision
+# that rests on a score distribution is not checkable without the scores, and
+# these three are small (2 MB total). Keep new sweep output out by default: add
+# a run here only when an entry in methodology/flourishing_decision_log.md
+# depends on it.
+!surf/results/agreement_1/
+!surf/results/phaseA_flash/
+!surf/results/phaseA_tulu/

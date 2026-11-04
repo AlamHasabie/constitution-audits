@@ -16,6 +16,17 @@ class AttributeFileLoader:
     1. HuggingFace dataset ID (e.g., "seoirsem/CHUNKY-tulu3-SFT-25k-attributes")
     2. Local JSONL file path (e.g., "./data/pseudo_sae_attributes.jsonl")
 
+    A HuggingFace id may carry "#<path or glob>" to restrict which of the
+    dataset's files are fetched:
+
+        seoirsem/CHUNKY-tulu3-SFT-25k-attributes#data/train-00003-of-00004.parquet
+
+    The full CHUNKY dataset is ~750 MiB of parquet across four shards, most of it
+    the prompt and response text that this loader discards -- it keeps only the
+    attribute column. One shard is a random slice of the same distribution with
+    fewer rows, which is usually enough for exercising a pipeline. Record which
+    shard was used: "the TULU attributes" means something different afterwards.
+
     Expected format (one JSON object per line or HF dataset row):
     {"prompt": "...", "response": "...", "sae_attributes": ["attr1", "attr2", ...]}
 
@@ -28,13 +39,23 @@ class AttributeFileLoader:
         Initialize the loader.
 
         Args:
-            source: HuggingFace dataset ID or path to local JSONL file
+            source: HuggingFace dataset ID, optionally "<id>#<path or glob>", or
+                a path to a local JSONL file
             attribute_column: Column name containing attributes
         """
-        self.source = source
+        # "#" separates an optional file selector. It cannot occur in a
+        # HuggingFace repo id or a Windows path, unlike ":" which would collide
+        # with a drive letter.
+        self.source, _, data_files = source.partition("#")
+        self.data_files = data_files or None
         self.attribute_column = attribute_column
         self.data: List[Dict[str, Any]] = []
         self._load_data()
+
+    @property
+    def provenance(self) -> str:
+        """The source as given, for recording alongside results."""
+        return f"{self.source}#{self.data_files}" if self.data_files else self.source
 
     def _load_data(self):
         """Load data from HuggingFace or local file."""
@@ -51,8 +72,11 @@ class AttributeFileLoader:
         """Load from HuggingFace dataset."""
         from datasets import load_dataset
 
-        print(f"Loading from HuggingFace: {self.source}")
-        ds = load_dataset(self.source, split="train")
+        print(f"Loading from HuggingFace: {self.provenance}")
+        if self.data_files:
+            ds = load_dataset(self.source, data_files=self.data_files, split="train")
+        else:
+            ds = load_dataset(self.source, split="train")
 
         for row in ds:
             record = dict(row)
@@ -60,9 +84,11 @@ class AttributeFileLoader:
                 self.data.append(record)
 
         if not self.data:
-            raise ValueError(f"No valid records found in HuggingFace dataset: {self.source}")
+            raise ValueError(
+                f"No valid records found in HuggingFace dataset: {self.provenance}"
+            )
 
-        print(f"Loaded {len(self.data)} records from HuggingFace: {self.source}")
+        print(f"Loaded {len(self.data)} records from HuggingFace: {self.provenance}")
 
     def _load_from_file(self, file_path: Path):
         """Load from local JSONL file."""

@@ -38,6 +38,16 @@ from pathlib import Path
 from surf.em_loop.loop import EMLoop
 
 RUBRIC_DIR = Path(__file__).parent / "rubrics"
+
+DEFAULT_JUDGE = (
+    # Decision 2026-11-04-A. MiMo is the pilot judge because it is the only
+    # rater measured so far that uses the banded rubric's range: 2-76 over 193
+    # ratings, against 3-15 for DeepSeek-V4.1-Flash, which never crossed the
+    # violation threshold on any of 98 pairs and so gave the loop no gradient.
+    # Evidence: results/agreement_1/. MiMo's cost is variance, not a floor --
+    # replicate spread reached 46 points -- so run replicates and average.
+    "https://api.deepinfra.com/v1/openai:XiaomiMiMo/MiMo-V2.6-Flash"
+)
 RUBRIC_SUFFIX = "_full.yaml"
 
 
@@ -86,19 +96,35 @@ async def main():
                         help="List available personas and exit")
     parser.add_argument("--persona", choices=list(personas.keys()),
                         help="Which persona constitution to audit against")
+    parser.add_argument("--rubric", default=None,
+                        help="Score with this rubric file instead of the "
+                             "rubrics/<persona>_full.yaml that --persona selects. "
+                             "--persona still names the output directory. The "
+                             "pilot searches with the banded rubric: "
+                             "--rubric rubrics/flourishing_banded.yaml")
     parser.add_argument("--target",
                         help="Character-trained model being audited (provider:model)")
-    parser.add_argument("--judge", default="openrouter:anthropic/claude-sonnet-4.6",
-                        help="Judge model. NOTE: extended thinking is gated on the "
-                             "string starting with 'anthropic:', so routing Claude "
-                             "via openrouter: silently disables it.")
+    parser.add_argument("--judge", default=DEFAULT_JUDGE,
+                        help=f"Judge model (default: {DEFAULT_JUDGE}). MiMo per "
+                             "decision 2026-11-04-A -- the only rater measured so "
+                             "far that uses the banded rubric's full range. NOTE: "
+                             "extended thinking is gated on the model string "
+                             "starting with 'anthropic:', so this default has it "
+                             "off, and judge.py pins temperature=1.0 regardless; "
+                             "replicates are the only variance control.")
     parser.add_argument("--query-model",
                         default="openrouter:meta-llama/llama-3.1-70b-instruct")
     parser.add_argument("--attributes",
                         default="seoirsem/CHUNKY-tulu3-SFT-25k-attributes",
                         help="HuggingFace dataset id or local JSONL path")
     parser.add_argument("--iterations", type=int, default=10)
-    parser.add_argument("--candidates", type=int, default=80)
+    parser.add_argument("--candidates", type=int, default=10,
+                        help="Candidates per iteration (default 10). The EM loop "
+                             "does not converge at this budget -- attribute "
+                             "reweighting is close to noise and the run is prompt "
+                             "generation plus a ranking signal, not a search "
+                             "result. Raise it well above the buffer size before "
+                             "reading anything into attribute weights.")
     parser.add_argument("--buffer-size", type=int, default=5)
     parser.add_argument("--runs", type=int, default=1,
                         help="Independent loops. Scores are high-variance with a "
@@ -122,6 +148,8 @@ async def main():
             print()
         print("Rubrics are minimal by design: constitution text and score range only.")
         print("See methodology/flourishing_rubric_minimalism.md")
+        print()
+        print("Banded variants are not listed: pass one with --rubric.")
         return
 
     if not args.persona:
@@ -129,7 +157,9 @@ async def main():
     if not args.target:
         parser.error("--target is required (the character-trained model to audit)")
 
-    rubric_path = personas[args.persona]
+    rubric_path = Path(args.rubric) if args.rubric else personas[args.persona]
+    if not rubric_path.exists():
+        parser.error(f"no rubric at {rubric_path}")
 
     model_short = args.target.split("/")[-1].split(":")[-1].replace(".", "").replace("-", "_")
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -163,10 +193,14 @@ async def main():
     print(f"\nResults in: {output_base}/")
     print(f"View: uv run utils/top.py {output_base}/run_1")
     print()
-    print("Scores are a RANKING signal for surfacing candidates, not a measurement:")
-    print("the rubric carries no severity examples, and judge variance is expected.")
-    print("Check score_metadata.error before reading any score - the judge turns")
-    print("every failure into a silent 0.0.")
+    print("These scores are a RANKING signal for surfacing candidates. This run")
+    print("searched its own prompts, so its scores are not comparable with another")
+    print("target's. Pool the prompts and re-score every target on all of them")
+    print("with run_rescore.py - that is the comparable measurement.")
+    print()
+    print("Unscored candidates are written with reward_score=null and a")
+    print("score_metadata.judge_error. They are excluded from the buffer and from")
+    print("the counts above; they are NOT zeros, so do not let them back in.")
 
 
 if __name__ == "__main__":

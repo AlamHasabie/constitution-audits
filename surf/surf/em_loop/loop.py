@@ -13,7 +13,13 @@ from surf.core.models import ModelResource
 from surf.core.streaming import JSONStreamer
 from surf.core.utils import parse_xml_tags_optional, render_jinja, tqdm_gather
 from surf.em_loop.buffer import ReplayBuffer
-from surf.em_loop.judge import SingleJudgeSystem, get_principle_from_rubric, load_rubric
+from surf.em_loop.judge import (
+    SingleJudgeSystem,
+    get_n_assertions_from_rubric,
+    get_principle_from_rubric,
+    get_score_prompt_from_rubric,
+    load_rubric,
+)
 from surf.em_loop.prompts import QUERY_GEN_PROMPT, QUERY_GEN_STOP_TOKEN
 from surf.em_loop.sampling import (
     AttributeFileLoader,
@@ -85,13 +91,16 @@ class EMLoop:
         # Initialize replay buffer
         self.replay_buffer = ReplayBuffer(buffer_size=buffer_size)
 
-        # Initialize judge
+        # Initialize judge. The rubric picks the judge prompt; rubrics that do
+        # not name one get the original, so existing rubrics score as before.
         self.judge = SingleJudgeSystem(
             principle_specific_details=self.principle_specific_details,
             model=judge_model,
             max_concurrency=judge_concurrency,
             use_thinking=use_thinking,
             thinking_budget=thinking_budget,
+            score_prompt=get_score_prompt_from_rubric(self.rubric),
+            n_assertions=get_n_assertions_from_rubric(self.rubric),
         )
 
         # Initialize target model
@@ -205,7 +214,9 @@ class EMLoop:
                         continue
                     try:
                         entry = json.loads(line)
-                        if "reward_score" in entry:
+                        # Null scores are unscored candidates kept for the prompt
+                        # pool; they must not be sorted into the buffer.
+                        if entry.get("reward_score") is not None:
                             buffer_candidates.append(entry)
                     except json.JSONDecodeError:
                         continue
@@ -302,7 +313,7 @@ class EMLoop:
             self._log_failure(f"exception: {e}", "", attributes)
             return None
 
-    async def _get_target_response(self, query: str) -> Optional[str]:
+    async def _get_target_response(self, query: str) -> tuple[Optional[str], Optional[str]]:
         """
         Get response from target model.
 
@@ -310,13 +321,18 @@ class EMLoop:
             query: The query to send
 
         Returns:
-            Model response or None if call fails
+            (response, error). Exactly one is set. The reason is returned rather
+            than printed, so a candidate that never got a response can say why in
+            its own record instead of only in a console line.
         """
         try:
-            return await self.target_model.call(query)
-        except Exception as e:
-            print(f"Target model error: {e}")
-            return None
+            response = await self.target_model.call(query)
+        except Exception as e:  # noqa: BLE001 - a failed target call is data, not a crash
+            return None, f"call_failed:{type(e).__name__}: {e}"
+
+        if not response:
+            return None, "empty_response"
+        return response, None
 
     async def run_single_iteration(self) -> Dict[str, Any]:
         """
@@ -363,8 +379,11 @@ class EMLoop:
         def update_query_progress(completed: int, total: int):
             self.status["progress"] = f"{completed}/{total}"
 
+        # See the note on the target gather below: the failures dict underneath
+        # counts exceptions, which only arrive as results with this set.
         queries = await tqdm_gather(
-            query_tasks, desc="Query generation", disable=self.quiet, on_progress=update_query_progress
+            query_tasks, desc="Query generation", return_exceptions=True,
+            disable=self.quiet, on_progress=update_query_progress
         )
 
         # Filter out failed generations and track failure types
@@ -411,18 +430,56 @@ class EMLoop:
         def update_target_progress(completed: int, total: int):
             self.status["progress"] = f"{completed}/{total}"
 
+        # return_exceptions=True: without it an exception escaping a single call
+        # propagates out of the gather and abandons the whole iteration, losing
+        # every other candidate with it. The isinstance check below was written
+        # expecting these to come back as results.
         responses = await tqdm_gather(
-            response_tasks, desc="Target responses", disable=self.quiet, on_progress=update_target_progress
+            response_tasks, desc="Target responses", return_exceptions=True,
+            disable=self.quiet, on_progress=update_target_progress
         )
 
-        # Filter candidates with valid responses
+        # Filter candidates with valid responses.
+        #
+        # A candidate the target never answered used to vanish here with no
+        # record of why, so an iteration could write fewer rows than it ran and
+        # nothing said so. That matters most in exactly the comparison this is
+        # for: a target that refuses or times out more often would quietly
+        # contribute fewer records than the others.
         scorable_candidates = []
-        for candidate, response in zip(valid_candidates, responses):
-            if response and not isinstance(response, Exception):
+        unresponded_candidates = []
+        for candidate, result in zip(valid_candidates, responses):
+            if isinstance(result, Exception):
+                response, error = None, f"task_failed:{type(result).__name__}: {result}"
+            else:
+                response, error = result
+
+            if response:
                 candidate["response"] = response
                 scorable_candidates.append(candidate)
+            else:
+                candidate["response"] = None
+                candidate["reward_score"] = None
+                candidate["score_metadata"] = {"target_error": error}
+                unresponded_candidates.append(candidate)
+                self._log_failure(f"target_{error}", "", candidate.get("attributes", []))
 
         self._log(f"Scorable candidates: {len(scorable_candidates)}")
+        if unresponded_candidates:
+            errors = {}
+            for candidate in unresponded_candidates:
+                key = str(candidate["score_metadata"]["target_error"])[:60]
+                errors[key] = errors.get(key, 0) + 1
+            self._log(f"  No target response: {len(unresponded_candidates)}")
+            for key, count in sorted(errors.items(), key=lambda kv: -kv[1]):
+                self._log(f"    {count}x {key}")
+
+        # Written before the early return below, so the prompts survive even in
+        # an iteration where every target call failed.
+        for candidate in unresponded_candidates:
+            await self.streamer.write_candidate(
+                candidate, self.iteration, run_id=self.run_id
+            )
 
         if not scorable_candidates:
             return {
@@ -430,6 +487,8 @@ class EMLoop:
                 "candidates": len(valid_candidates),
                 "valid_queries": len(valid_candidates),
                 "scored": 0,
+                "unscored": 0,
+                "no_response": len(unresponded_candidates),
                 "num_violations": 0,
                 "buffer_size": len(self.replay_buffer),
                 "top_score": 0,
@@ -452,17 +511,49 @@ class EMLoop:
         )
 
         # Process results
+        #
+        # A candidate the judge could not score is NOT a candidate scoring zero.
+        # Zero sits in the no-violation band, so folding failures into the scores
+        # would feed the buffer, the distributions and any model-vs-model
+        # comparison with evidence of compliance that nothing established. They
+        # are written out separately with a null score and excluded from here on.
         scored_candidates = []
+        unscored_candidates = []
         for candidate, result in zip(scorable_candidates, score_results):
             if isinstance(result, Exception):
+                candidate["reward_score"] = None
+                candidate["score_metadata"] = {
+                    "judge_error": f"task_failed:{type(result).__name__}: {result}"
+                }
+                unscored_candidates.append(candidate)
                 continue
 
             score, metadata = result
+
+            # Attribution is promoted to the top level: it is the field the
+            # analysis reads, and assertion numbers are cheap to carry. Numbers
+            # only -- the wording stays in the rubric, recoverable from the
+            # rubric commit. Null means the rubric did not ask for attributions.
+            candidate["violated"] = metadata.get("violated")
+            candidate["evidence"] = metadata.get("evidence")
+            candidate["band"] = metadata.get("band")
             candidate["reward_score"] = score
             candidate["score_metadata"] = metadata
-            scored_candidates.append(candidate)
+
+            if score is None:
+                unscored_candidates.append(candidate)
+            else:
+                scored_candidates.append(candidate)
 
         self._log(f"Successfully scored: {len(scored_candidates)}")
+        if unscored_candidates:
+            errors = {}
+            for candidate in unscored_candidates:
+                key = str(candidate["score_metadata"].get("judge_error"))[:60]
+                errors[key] = errors.get(key, 0) + 1
+            self._log(f"  Unscored (excluded, not counted as 0): {len(unscored_candidates)}")
+            for key, count in sorted(errors.items(), key=lambda kv: -kv[1]):
+                self._log(f"    {count}x {key}")
 
         # Sort by score
         scored_candidates.sort(key=lambda x: x["reward_score"], reverse=True)
@@ -500,6 +591,15 @@ class EMLoop:
             run_id=self.run_id,
         )
 
+        # Unscored candidates land in the same file with a null score, so the
+        # pooled re-score can build its prompt set from results.jsonl alone and
+        # see how much of the iteration it is missing. They never enter the
+        # buffer, and the resume path skips null scores.
+        for candidate in unscored_candidates:
+            await self.streamer.write_candidate(
+                candidate, self.iteration, run_id=self.run_id
+            )
+
         self._log(f"\nBuffer state: {self.replay_buffer}")
 
         return {
@@ -507,6 +607,8 @@ class EMLoop:
             "candidates": self.candidates_per_iter,
             "valid_queries": len(valid_candidates),
             "scored": len(scored_candidates),
+            "unscored": len(unscored_candidates),
+            "no_response": len(unresponded_candidates),
             "num_violations": num_violations,
             "buffer_size": len(self.replay_buffer),
             "top_score": scored_candidates[0]["reward_score"] if scored_candidates else 0,
