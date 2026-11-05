@@ -90,8 +90,8 @@ already a multi-rater stage but does not measure agreement:
 **Consistency measurement**
 
 - **Intra-rater ceiling first.** The judge samples at `--judge-temperature`
-  (default 0.2, decision 2026-11-05-B; it was pinned at 1.0 until then), so
-  self-inconsistency is non-zero but tunable. Keep it non-zero and identical to the
+  (default 1.0, decision 2026-11-05-B; tunable, but 0.2 measured at 85% judge
+  failure on MiMo and was reverted), so self-inconsistency is non-zero. Keep it non-zero and identical to the
   scoring runs: at 0 every replicate is identical and this measures nothing, and at
   any other value it measures an instrument nobody deployed. Re-rate a sample with the
   same rater to get self-agreement. This *bounds* achievable

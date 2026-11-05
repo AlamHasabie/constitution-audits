@@ -15,33 +15,41 @@ from surf.em_loop.verdict import Verdict, parse_verdict
 
 # Judge sampling defaults.
 #
-# Temperature used to be pinned at 1.0 for every judge, because Anthropic's
-# extended thinking requires it. That constraint is enforced where it actually
-# applies -- inside ModelResource.call_with_thinking -- so a non-thinking judge
-# never needed it. At 1.0, MiMo-V2.6-Flash lost 7.4% of the 2026-11-05 phase B
-# rows to runaway degenerate generation that never emitted a <score>, and the
-# loss was arm-correlated (10, 14 and 24 of 217 for base, flourishing and
-# sycophancy), which moves each arm's mean by a different amount.
+# Temperature is a parameter, not a constant: judge.py used to set 1.0 on every
+# judge for a constraint that only binds Anthropic extended thinking, which
+# ModelResource already enforces inside call_with_thinking. A non-thinking judge
+# never needed the pin, and nothing could change it.
 #
-# Low, but deliberately NOT zero. Two things need sampling to stay live: the
-# intra-rater pass in run_rater.py measures a judge's self-consistency by
-# resampling at the production temperature, which is vacuous at 0; and the retry
-# in judge() can only escape a bad draw if the next draw is allowed to differ.
-DEFAULT_JUDGE_TEMPERATURE = 0.2
+# The default stays 1.0 because lowering it was MEASURED TO BE MUCH WORSE for the
+# pilot judge, not because the pin was right. At 1.0, MiMo-V2.6-Flash lost 7.4% of
+# the 2026-11-05 phase B rows to verdicts that never emitted a <score>. At 0.2 it
+# lost 85.1% over 175 calls: degenerate from the first token, not truncated, and
+# well inside any cap. See results/phaseB_rejudge_t02/FINDING.md and decision
+# 2026-11-05-B. This model appears to have no usable low-temperature regime.
+#
+# So do not lower this for MiMo without measuring first, and never set 0: the
+# intra-rater pass in run_rater.py resamples at the production temperature and is
+# vacuous at 0, and the retry below can only escape a bad draw if the next draw is
+# allowed to differ. A judge whose own failures are correlated with the target
+# needs the retry, which is the mitigation that actually survived measurement.
+DEFAULT_JUDGE_TEMPERATURE = 1.0
 
-# A well-formed verdict is short. Both score prompts ask for 1-2 sentences of
-# reasoning, and across the 603 scored phase B records the raw output reached
-# 2196 characters at most, median 471; the degenerate ones reached 11668 and ran
-# to the old 2048-token ceiling. Both prompts also emit <score> BEFORE
-# <reasoning>, so a cap can only ever clip the tail of a diagnostic field and
-# never the score, which makes capping low safe: a collapse becomes a cheap
-# early failure instead of a page of salad charged in full.
-DEFAULT_JUDGE_MAX_TOKENS = 1024
+# Response cap for a non-thinking judge. 2048 is the value every run so far used.
+#
+# Note the output order the score prompts ask for: <violated>, then <evidence>,
+# then <score>, then <reasoning>. <evidence> quotes spans from the response and is
+# NOT length-bounded, so it sits before the score and a tight cap CAN truncate
+# before the score is emitted. An earlier version of this comment claimed the
+# opposite and justified capping at 1024 on it. Scored output has run to 2196
+# characters (median 471), so 1024 is not obviously safe, and the collapse it was
+# meant to catch turned out not to be length-related at all.
+DEFAULT_JUDGE_MAX_TOKENS = 2048
 
-# Retries exist for a judge that returned no parseable score. Bounded at three,
-# so an unlucky draw is recoverable without letting a genuinely unscoreable pair
-# bill without limit. Note this is useless at temperature 0, where every retry
-# redraws the same text.
+# Retries exist for a judge that returned no parseable score, and are the one
+# mitigation here that measurement supports. Bounded at three, so an unlucky draw
+# is recoverable without letting a genuinely unscoreable pair bill without limit.
+# Useless at temperature 0, where every retry redraws the same text. Set 1 when
+# MEASURING a judge's failure rate, since best-of-three hides it.
 DEFAULT_JUDGE_ATTEMPTS = 3
 
 

@@ -239,12 +239,12 @@ async def main():
     parser.add_argument("--judge-temperature", type=float,
                         default=DEFAULT_JUDGE_TEMPERATURE,
                         help=f"Judge sampling temperature (default "
-                             f"{DEFAULT_JUDGE_TEMPERATURE}). Was pinned at 1.0 "
-                             "for every judge because extended thinking requires "
-                             "it; that is enforced inside the thinking path, so a "
-                             "non-thinking judge never needed it. At 1.0 MiMo lost "
-                             "7.4%% of the 2026-11-05 phase B rows to degenerate "
-                             "generation, unevenly across arms. Not 0: the "
+                             f"{DEFAULT_JUDGE_TEMPERATURE}). Tunable, but DO NOT "
+                             "lower it for MiMo without measuring: at 1.0 it lost "
+                             "7.4%% of the 2026-11-05 phase B rows to verdicts with "
+                             "no score, and at 0.2 it lost 85.1%%, degenerate from "
+                             "the first token (see "
+                             "results/phaseB_rejudge_t02/FINDING.md). Never 0: the "
                              "intra-rater pass resamples at this temperature and "
                              "retries need the draw to be able to differ. Part of "
                              "the instrument -- keep it fixed across compared "
@@ -252,11 +252,11 @@ async def main():
     parser.add_argument("--judge-max-tokens", type=int,
                         default=DEFAULT_JUDGE_MAX_TOKENS,
                         help=f"Judge response cap (default "
-                             f"{DEFAULT_JUDGE_MAX_TOKENS}). A well-formed verdict "
-                             "ran to 2196 characters at most over 603 phase B "
-                             "records; both score prompts emit <score> before "
-                             "<reasoning>, so a cap clips only diagnostics. Capping "
-                             "low makes a collapse fail early and cheaply.")
+                             f"{DEFAULT_JUDGE_MAX_TOKENS}). Scored output has run "
+                             "to 2196 characters (median 471), but the prompts ask "
+                             "for <evidence> BEFORE <score> and evidence quotes "
+                             "unbounded spans, so a tight cap can truncate before "
+                             "the score. Lower it only with that in mind.")
     parser.add_argument("--judge-attempts", type=int,
                         default=DEFAULT_JUDGE_ATTEMPTS,
                         help=f"How many times to ask before recording an unscored "

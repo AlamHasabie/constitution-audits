@@ -14,7 +14,7 @@ grep -n "^## 2026-10-29" methodology/flourishing_decision_log.md
 
 | Entry | Date | Decision | Status |
 |---|---|---|---|
-| [2026-11-05-B](#2026-11-05-b--judge-sampling-is-a-parameter-not-a-constant) | 2026-11-05 | Judge temperature, cap and retries are parameters; defaults 0.2 / 1024 / 3 | **Mechanically verified** — threading and retries tested, never run live |
+| [2026-11-05-B](#2026-11-05-b--judge-sampling-is-a-parameter-not-a-constant) | 2026-11-05 | Judge sampling parameterised; defaults stay 1.0 / 2048, retries added | **Partially verified** — retries tested; temperature 0.2 measured at 85% failure and reverted |
 | [2026-11-04-A](#2026-11-04-a--mimo-as-the-pilot-judge) | 2026-11-04 | MiMo is the pilot judge; DeepSeek-Flash rejected on range | **Partially verified** — range measured, accuracy not |
 | [2026-10-31-A](#2026-10-31-a--generated-rubrics-and-one-runner-per-persona) | 2026-10-31 | Rubrics generated, not hand-written; one runner per persona | **Verified** reproducible |
 | [2026-10-29-C](#2026-10-29-c--constitution-has-15-items-not-17) | 2026-10-29 | Constitution has 15 items, not 17 | **Verified** against source |
@@ -36,71 +36,94 @@ positive.
 ## 2026-11-05-B — Judge sampling is a parameter, not a constant
 
 **Decision.** The judge's sampling temperature, response cap and retry count are
-arguments on `SingleJudgeSystem` with `--judge-temperature`, `--judge-max-tokens` and
-`--judge-attempts` on [`../surf/run_persona.py`](../surf/run_persona.py),
+arguments on `SingleJudgeSystem`, with `--judge-temperature`, `--judge-max-tokens`
+and `--judge-attempts` on [`../surf/run_persona.py`](../surf/run_persona.py),
 [`../surf/run_rescore.py`](../surf/run_rescore.py) and
-[`../surf/run_rater.py`](../surf/run_rater.py). Defaults: **temperature 0.2**
-(was 1.0), **max_tokens 1024** (was 2048), **attempts 3** (was 1, i.e. no retry).
-All three are recorded in `judge.config`, so they reach every record and every
-`run_config.json`.
+[`../surf/run_rater.py`](../surf/run_rater.py). All three are recorded in
+`judge.config`, so they reach every record and every `run_config.json`.
+
+**Defaults: temperature 1.0, max_tokens 2048, attempts 3.** Only the retry count
+changes behaviour from the previous runs. The first version of this decision also
+lowered the temperature to 0.2 and the cap to 1024; both were reverted the same day
+after measurement, below.
 
 **Why the old value was not a choice.** `judge.py` set `temperature=1.0` on every
 judge with the comment "Extended thinking requires temperature=1". That is a real
-Anthropic constraint, but it is enforced where it applies — inside
+Anthropic constraint, but it is enforced where it applies -- inside
 `ModelResource.call_with_thinking`, which builds its own `QueryParams` with
 `temperature=1.0` regardless of the caller. The pin in `judge.py` therefore guarded
 nothing for a non-thinking judge, and MiMo routed through a DeepInfra URL is always
 non-thinking, because thinking is gated on the model string starting with
 `anthropic:`. [2026-11-04-A](#2026-11-04-a--mimo-as-the-pilot-judge) recorded the pin
 as something that "cannot be tuned away by sampling settings", leaving replicates as
-the only variance control. That was true of the code as written, not of the API.
+the only variance control. That was true of the code as written, not of the API. The
+parameter is the lasting part of this decision; the value is not.
 
-**What it cost.** Phase B of the 2026-11-05 pilot, `surf/results/phaseB/records.jsonl`:
-48 of 651 rows (7.4%) carry `judge_error: no_score_found` and a null score. 29 are
-runaway degenerate generation — mixed-script token salad that never emits a `<score>`
-— and 19 returned nothing at all. The failures are not length-related and not
-truncation of a healthy answer; well-formed output is short, and the failures are long:
+**The problem it was meant to fix.** Phase B of the 2026-11-05 pilot,
+`surf/results/phaseB/records.jsonl`: 48 of 651 rows (7.4%) carry
+`judge_error: no_score_found` and a null score -- 29 runaway degenerate generations
+that never emit a `<score>`, 19 empty returns. The loss is arm-correlated (base 10,
+flourishing 14, sycophancy 24 of 217) and concentrates on higher-scoring prompts: on
+the prompts where the sycophancy arm failed, the other arms averaged 26.4 against
+21.6 overall. A mean over each arm's available rows is therefore depressed by a
+different amount per arm, which is the quantity phase B exists to compare. Only 181
+of 217 prompts have all three arms scored.
 
-| | n | median chars | p90 | max |
-|---|---:|---:|---:|---:|
-| scored | 603 | 471 | 774 | 2196 |
-| failed, non-empty | 29 | 2485 | 7690 | 11668 |
+**Lowering the temperature was tried and refuted.** The reasoning was that 1.0 is a
+high temperature for an instrument and that the collapse was a sampling artefact.
+Measured on 175 calls over the same pairs at 0.2, with `--judge-attempts 1` so the
+rate stays observable, and aborted once the rate was clear:
 
-**Why the loss is not neutral.** It is arm-correlated — base 10, flourishing 14,
-sycophancy 24 of 217 — and concentrates on higher-scoring prompts: on the prompts where
-the sycophancy arm failed, the other arms averaged 26.4 against 21.6 overall. So a mean
-taken over each arm's available rows is depressed by a different amount per arm, which
-is exactly the quantity phase B exists to compare. Only 181 of 217 prompts have all
-three arms scored. Hence retries, and hence `judge_attempts` on every record: a run
-that only held together on retries must not read as a clean one.
+| judge temperature | calls | no-score rate |
+|---|---:|---:|
+| 1.0 | 651 | 7.4% |
+| 0.2 | 175 | **85.1%** |
 
-**Why 0.2 and not 0.** Two things need sampling to stay live. The intra-rater pass in
-`run_rater.py` measures a judge's self-consistency by resampling at the production
-temperature; at 0 every replicate is identical and the measurement is vacuous, which
-would retire the instrument that produced
-[2026-11-04-A](#2026-11-04-a--mimo-as-the-pilot-judge). And a retry can only escape a
-bad draw if the next draw is allowed to differ. Temperature 0 would also not obviously
-help: greedy decoding can lock into a repetition loop with no way out.
+Eleven times worse. It is not the cap, which was lowered in the same run: the
+failures are *shorter* than 1024 tokens allows (median 284 characters, max 3154),
+and **0 of 149** contain `<violated>`, `<evidence>` or `<score>`, so nothing was
+truncated mid-block -- the output is degenerate from the first token, mixed-script
+salad with a broken sampler's signature. Full evidence in
+`surf/results/phaseB_rejudge_t02/FINDING.md`. Those records are not scores and must
+not be pooled as any.
 
-**Why the cap can be lowered safely.** Both score prompts emit `<score>` before
-`<reasoning>`, and ask for 1–2 sentences of reasoning. A cap can therefore only clip
-the tail of a diagnostic field, never the score. At 1024 a collapse fails early and
-cheaply instead of billing a full page of salad; the old 2048 is what the degenerate
-rows ran to.
+MiMo-V2.6-Flash as served by DeepInfra appears to have no usable low-temperature
+regime. This was named as a risk in the first version of this entry -- "greedy
+decoding can lock into a repetition loop with no way out" -- and then dismissed. So
+1.0 is not merely the inherited pin: it is close to the only operating point measured
+to work for this judge, and it stays the default on that basis.
 
-**What this does not establish.** That 0.2 fixes it. No run has been scored at 0.2 —
-the failure rate, the replicate spread of 46 points from
-[2026-11-04-A](#2026-11-04-a--mimo-as-the-pilot-judge), and whether scores shift
-systematically with temperature are all unmeasured. Lowering judge temperature changes
-the instrument, so scores taken at 0.2 are **not comparable** with the phase A and
-phase B numbers already collected at 1.0; comparing arms requires one temperature
-throughout, as 2026-11-05-A required of the targets.
+**The cap was reverted for a second reason: its justification was wrong.** It read
+"both score prompts emit `<score>` before `<reasoning>`, so a cap clips only
+diagnostics". The actual order is `<violated>`, `<evidence>`, `<score>`,
+`<reasoning>`. `<evidence>` quotes spans from the response and is not
+length-bounded, so it precedes the score, and a tight cap *can* truncate before the
+score is emitted. No run has been lost to this, but the claim should not stand.
 
-**Status: mechanically verified only.** The parameter threading, the thinking-path
-override (a thinking judge still reports the 1.0 it actually sends), the retry
-behaviour on degenerate, empty and provider-error responses, and `max_attempts=1`
-disabling retries were each exercised against a stubbed judge. Nothing has been run
-against a live model.
+**Never 0.** The intra-rater pass in `run_rater.py` measures self-consistency by
+resampling at the production temperature; at 0 every replicate is identical and the
+measurement is vacuous, which would retire the instrument behind
+[2026-11-04-A](#2026-11-04-a--mimo-as-the-pilot-judge). A retry also cannot escape a
+bad draw if the next draw is identical.
+
+**What remains the fix.** Retries. `judge()` re-asks a verdict that did not parse,
+bounded at three; an exhausted verdict keeps `score=None` rather than becoming a 0,
+and records carry `judge_attempts` with `parse_warnings` naming the discarded
+failures, so a run that only held together on retries cannot read as a clean one. Set
+`--judge-attempts 1` when measuring a failure rate, since best-of-three hides it.
+
+**Still open.** Whether an intermediate temperature (0.6-0.9) beats 1.0 is
+unmeasured, and the 7.4% loss at 1.0 is real and still biasing. A sweep over a few
+temperatures on a pair sample would settle it for a few hundred calls, and should run
+before any default moves again. Also unmeasured: whether retries at 1.0 recover the
+48 rows, and whether recovered scores differ systematically from first-attempt ones.
+
+**Status: parameterisation verified; one default refuted and reverted.** The
+threading, the thinking-path override (a thinking judge still reports the 1.0 it
+sends), the retry behaviour on degenerate, empty and provider-error responses, and
+`max_attempts=1` disabling retries were each exercised against a stubbed judge. The
+0.2 default was tested against the live judge and failed. No scoring run has yet been
+completed under this commit.
 
 ---
 
@@ -144,10 +167,11 @@ flagged.
 **What it costs.** MiMo's replicate spread reached 46 points and crossed the violation
 threshold on 4 of 96 pairs. `judge.py` pins `temperature=1.0` unconditionally, so this
 cannot be tuned away by sampling settings: replicates and averaging are the only
-control. (**Superseded by
+control. (**Refined by
 [2026-11-05-B](#2026-11-05-b--judge-sampling-is-a-parameter-not-a-constant)**: the pin
-was redundant for a non-thinking judge and has been removed. The spread figure stands —
-it was measured at 1.0.) Routing MiMo through a DeepInfra URL also leaves extended thinking off, since
+was redundant for a non-thinking judge and is now a parameter, but 1.0 remains the
+default because 0.2 measured far worse. Replicates, averaging and now retries are
+still the only controls. The spread figure stands — it was measured at 1.0.) Routing MiMo through a DeepInfra URL also leaves extended thinking off, since
 it is gated on the model string starting with `anthropic:`.
 
 **Not settled: Claude was never in the comparison.** agreement_1 compared two DeepInfra

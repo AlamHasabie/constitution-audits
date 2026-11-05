@@ -118,24 +118,25 @@ async def main():
                              "far that uses the banded rubric's full range. NOTE: "
                              "extended thinking is gated on the model string "
                              "starting with 'anthropic:', so this default has it "
-                             "off. Judge sampling is set by --judge-temperature "
-                             "and is no longer pinned at 1.0.")
+                             "off. Judge sampling is set by --judge-temperature, "
+                             "which defaults to 1.0 on measurement rather than on "
+                             "the old pin.")
     parser.add_argument("--judge-temperature", type=float,
                         default=DEFAULT_JUDGE_TEMPERATURE,
                         help=f"Judge sampling temperature (default "
-                             f"{DEFAULT_JUDGE_TEMPERATURE}). Was pinned at 1.0 "
-                             "because extended thinking requires it, which a "
-                             "non-thinking judge never needed. At 1.0 MiMo lost "
-                             "7.4%% of the 2026-11-05 phase B rows to degenerate "
-                             "generation, unevenly across arms. Not 0: the "
+                             f"{DEFAULT_JUDGE_TEMPERATURE}). Tunable, but DO NOT "
+                             "lower it for MiMo without measuring: 7.4%% of phase B "
+                             "rows failed to score at 1.0, and 85.1%% at 0.2 (see "
+                             "results/phaseB_rejudge_t02/FINDING.md). Never 0: the "
                              "intra-rater pass resamples at this temperature, and "
                              "retries need the draw to be able to differ.")
     parser.add_argument("--judge-max-tokens", type=int,
                         default=DEFAULT_JUDGE_MAX_TOKENS,
                         help=f"Judge response cap (default "
-                             f"{DEFAULT_JUDGE_MAX_TOKENS}). Both score prompts "
-                             "emit <score> before <reasoning>, so a cap clips only "
-                             "diagnostics and makes a collapse fail cheaply.")
+                             f"{DEFAULT_JUDGE_MAX_TOKENS}). The prompts ask for "
+                             "<evidence> before <score>, and evidence quotes "
+                             "unbounded spans, so a tight cap can truncate before "
+                             "the score.")
     parser.add_argument("--judge-attempts", type=int,
                         default=DEFAULT_JUDGE_ATTEMPTS,
                         help=f"Attempts before recording an unscored verdict "
