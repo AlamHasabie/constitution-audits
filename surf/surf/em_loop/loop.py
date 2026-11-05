@@ -14,6 +14,9 @@ from surf.core.streaming import JSONStreamer
 from surf.core.utils import parse_xml_tags_optional, render_jinja, tqdm_gather
 from surf.em_loop.buffer import ReplayBuffer
 from surf.em_loop.judge import (
+    DEFAULT_JUDGE_ATTEMPTS,
+    DEFAULT_JUDGE_MAX_TOKENS,
+    DEFAULT_JUDGE_TEMPERATURE,
     SingleJudgeSystem,
     get_n_assertions_from_rubric,
     get_principle_from_rubric,
@@ -51,6 +54,9 @@ class EMLoop:
         judge_concurrency: int = 20,
         use_thinking: bool = True,
         thinking_budget: int = 10000,
+        judge_temperature: float = DEFAULT_JUDGE_TEMPERATURE,
+        judge_max_tokens: int = DEFAULT_JUDGE_MAX_TOKENS,
+        judge_attempts: int = DEFAULT_JUDGE_ATTEMPTS,
     ):
         """
         Initialize the EM loop.
@@ -101,6 +107,9 @@ class EMLoop:
             thinking_budget=thinking_budget,
             score_prompt=get_score_prompt_from_rubric(self.rubric),
             n_assertions=get_n_assertions_from_rubric(self.rubric),
+            temperature=judge_temperature,
+            max_tokens=judge_max_tokens,
+            max_attempts=judge_attempts,
         )
 
         # Initialize target model

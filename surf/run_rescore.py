@@ -50,6 +50,9 @@ from typing import Any, Dict, List, Optional
 from surf.core.models import ModelResource
 from surf.core.utils import tqdm_gather
 from surf.em_loop.judge import (
+    DEFAULT_JUDGE_ATTEMPTS,
+    DEFAULT_JUDGE_MAX_TOKENS,
+    DEFAULT_JUDGE_TEMPERATURE,
     SingleJudgeSystem,
     get_n_assertions_from_rubric,
     get_principle_from_rubric,
@@ -233,6 +236,33 @@ async def main():
                              "off; an anthropic:-routed judge is a DIFFERENT "
                              "instrument, not the same one faster.")
     parser.add_argument("--judge-concurrency", type=int, default=20)
+    parser.add_argument("--judge-temperature", type=float,
+                        default=DEFAULT_JUDGE_TEMPERATURE,
+                        help=f"Judge sampling temperature (default "
+                             f"{DEFAULT_JUDGE_TEMPERATURE}). Was pinned at 1.0 "
+                             "for every judge because extended thinking requires "
+                             "it; that is enforced inside the thinking path, so a "
+                             "non-thinking judge never needed it. At 1.0 MiMo lost "
+                             "7.4%% of the 2026-11-05 phase B rows to degenerate "
+                             "generation, unevenly across arms. Not 0: the "
+                             "intra-rater pass resamples at this temperature and "
+                             "retries need the draw to be able to differ. Part of "
+                             "the instrument -- keep it fixed across compared "
+                             "judges, and report it.")
+    parser.add_argument("--judge-max-tokens", type=int,
+                        default=DEFAULT_JUDGE_MAX_TOKENS,
+                        help=f"Judge response cap (default "
+                             f"{DEFAULT_JUDGE_MAX_TOKENS}). A well-formed verdict "
+                             "ran to 2196 characters at most over 603 phase B "
+                             "records; both score prompts emit <score> before "
+                             "<reasoning>, so a cap clips only diagnostics. Capping "
+                             "low makes a collapse fail early and cheaply.")
+    parser.add_argument("--judge-attempts", type=int,
+                        default=DEFAULT_JUDGE_ATTEMPTS,
+                        help=f"How many times to ask before recording an unscored "
+                             f"verdict (default {DEFAULT_JUDGE_ATTEMPTS}, 1 "
+                             "disables). Judge failures correlate with the target, "
+                             "so dropping them biases per-arm means.")
     parser.add_argument("--target-max-tokens", type=int, default=2048,
                         help="Response cap for every target (default 2048, matching "
                              "the search loop). Keep it identical across targets: a "
@@ -273,6 +303,9 @@ async def main():
         max_concurrency=args.judge_concurrency,
         score_prompt=get_score_prompt_from_rubric(rubric),
         n_assertions=get_n_assertions_from_rubric(rubric),
+        temperature=args.judge_temperature,
+        max_tokens=args.judge_max_tokens,
+        max_attempts=args.judge_attempts,
     )
 
     static_fields = {
@@ -292,6 +325,8 @@ async def main():
           f"(score_prompt={judge.score_prompt_name}, "
           f"n_assertions={judge.n_assertions})")
     print(f"  Judge:          {args.judge} (thinking={judge.use_thinking})")
+    print(f"  Judge sampling: temperature={judge.temperature}, "
+          f"max_tokens={judge.max_tokens}, attempts={judge.max_attempts}")
     print(f"  Judge calls:    up to {len(prompts) * len(targets)}")
     print(f"  Output:         {output_dir}/")
     if done:

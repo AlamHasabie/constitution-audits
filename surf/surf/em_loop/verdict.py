@@ -166,6 +166,10 @@ class Verdict:
     thinking: Optional[str] = None
     parse_warnings: List[str] = field(default_factory=list)
     error: Optional[str] = None
+    # How many judge calls this verdict cost. Above 1 means earlier attempts
+    # returned no parseable score, which is a property of the judge rather than
+    # of the response, and is worth being able to count per target.
+    attempts: int = 1
 
     @property
     def ok(self) -> bool:
@@ -187,6 +191,7 @@ class Verdict:
             "parse_warnings": self.parse_warnings,
             "raw_judge_output": self.raw,
             "judge_error": self.error,
+            "judge_attempts": self.attempts,
         }
 
 

@@ -89,9 +89,12 @@ already a multi-rater stage but does not measure agreement:
 
 **Consistency measurement**
 
-- **Intra-rater ceiling first.** `judge.py` pins `temperature=1.0` (extended
-  thinking requires it), so self-inconsistency is guaranteed non-zero. Re-rate a
-  sample with the same rater to get self-agreement. This *bounds* achievable
+- **Intra-rater ceiling first.** The judge samples at `--judge-temperature`
+  (default 0.2, decision 2026-11-05-B; it was pinned at 1.0 until then), so
+  self-inconsistency is non-zero but tunable. Keep it non-zero and identical to the
+  scoring runs: at 0 every replicate is identical and this measures nothing, and at
+  any other value it measures an instrument nobody deployed. Re-rate a sample with the
+  same rater to get self-agreement. This *bounds* achievable
   inter-rater agreement — if a rater agrees with itself at a low level, no ensemble
   fixes it, and that is worth knowing before spending anything.
 - **Inter-rater:** Krippendorff's alpha with an ordinal metric (handles >2 raters

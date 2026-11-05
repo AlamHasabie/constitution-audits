@@ -35,6 +35,11 @@ import yaml
 from datetime import datetime
 from pathlib import Path
 
+from surf.em_loop.judge import (
+    DEFAULT_JUDGE_ATTEMPTS,
+    DEFAULT_JUDGE_MAX_TOKENS,
+    DEFAULT_JUDGE_TEMPERATURE,
+)
 from surf.em_loop.loop import EMLoop
 
 RUBRIC_DIR = Path(__file__).parent / "rubrics"
@@ -72,6 +77,9 @@ async def run_single(
         attributes=args.attributes,
         target_model=args.target,
         judge_model=args.judge,
+        judge_temperature=args.judge_temperature,
+        judge_max_tokens=args.judge_max_tokens,
+        judge_attempts=args.judge_attempts,
         query_model=args.query_model,
         buffer_size=args.buffer_size,
         candidates_per_iter=args.candidates,
@@ -110,8 +118,30 @@ async def main():
                              "far that uses the banded rubric's full range. NOTE: "
                              "extended thinking is gated on the model string "
                              "starting with 'anthropic:', so this default has it "
-                             "off, and judge.py pins temperature=1.0 regardless; "
-                             "replicates are the only variance control.")
+                             "off. Judge sampling is set by --judge-temperature "
+                             "and is no longer pinned at 1.0.")
+    parser.add_argument("--judge-temperature", type=float,
+                        default=DEFAULT_JUDGE_TEMPERATURE,
+                        help=f"Judge sampling temperature (default "
+                             f"{DEFAULT_JUDGE_TEMPERATURE}). Was pinned at 1.0 "
+                             "because extended thinking requires it, which a "
+                             "non-thinking judge never needed. At 1.0 MiMo lost "
+                             "7.4%% of the 2026-11-05 phase B rows to degenerate "
+                             "generation, unevenly across arms. Not 0: the "
+                             "intra-rater pass resamples at this temperature, and "
+                             "retries need the draw to be able to differ.")
+    parser.add_argument("--judge-max-tokens", type=int,
+                        default=DEFAULT_JUDGE_MAX_TOKENS,
+                        help=f"Judge response cap (default "
+                             f"{DEFAULT_JUDGE_MAX_TOKENS}). Both score prompts "
+                             "emit <score> before <reasoning>, so a cap clips only "
+                             "diagnostics and makes a collapse fail cheaply.")
+    parser.add_argument("--judge-attempts", type=int,
+                        default=DEFAULT_JUDGE_ATTEMPTS,
+                        help=f"Attempts before recording an unscored verdict "
+                             f"(default {DEFAULT_JUDGE_ATTEMPTS}, 1 disables). "
+                             "Judge failures correlate with the target, so "
+                             "dropping them biases the comparison.")
     parser.add_argument("--query-model",
                         default="openrouter:meta-llama/llama-3.1-70b-instruct")
     parser.add_argument("--attributes",
@@ -174,6 +204,8 @@ async def main():
     print(f"  {total} total candidates (~{total * 3} API calls)")
     print(f"  Target: {args.target}")
     print(f"  Judge:  {args.judge}")
+    print(f"  {'':8s}temperature={args.judge_temperature}, "
+          f"max_tokens={args.judge_max_tokens}, attempts={args.judge_attempts}")
     print(f"  Output: {output_base}")
     print()
 

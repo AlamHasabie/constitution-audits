@@ -13,6 +13,37 @@ from surf.core.utils import render_jinja, tqdm_gather
 from surf.em_loop.prompts import DEFAULT_SCORE_PROMPT, SCORE_PROMPTS
 from surf.em_loop.verdict import Verdict, parse_verdict
 
+# Judge sampling defaults.
+#
+# Temperature used to be pinned at 1.0 for every judge, because Anthropic's
+# extended thinking requires it. That constraint is enforced where it actually
+# applies -- inside ModelResource.call_with_thinking -- so a non-thinking judge
+# never needed it. At 1.0, MiMo-V2.6-Flash lost 7.4% of the 2026-11-05 phase B
+# rows to runaway degenerate generation that never emitted a <score>, and the
+# loss was arm-correlated (10, 14 and 24 of 217 for base, flourishing and
+# sycophancy), which moves each arm's mean by a different amount.
+#
+# Low, but deliberately NOT zero. Two things need sampling to stay live: the
+# intra-rater pass in run_rater.py measures a judge's self-consistency by
+# resampling at the production temperature, which is vacuous at 0; and the retry
+# in judge() can only escape a bad draw if the next draw is allowed to differ.
+DEFAULT_JUDGE_TEMPERATURE = 0.2
+
+# A well-formed verdict is short. Both score prompts ask for 1-2 sentences of
+# reasoning, and across the 603 scored phase B records the raw output reached
+# 2196 characters at most, median 471; the degenerate ones reached 11668 and ran
+# to the old 2048-token ceiling. Both prompts also emit <score> BEFORE
+# <reasoning>, so a cap can only ever clip the tail of a diagnostic field and
+# never the score, which makes capping low safe: a collapse becomes a cheap
+# early failure instead of a page of salad charged in full.
+DEFAULT_JUDGE_MAX_TOKENS = 1024
+
+# Retries exist for a judge that returned no parseable score. Bounded at three,
+# so an unlucky draw is recoverable without letting a genuinely unscoreable pair
+# bill without limit. Note this is useless at temperature 0, where every retry
+# redraws the same text.
+DEFAULT_JUDGE_ATTEMPTS = 3
+
 
 class SingleJudgeSystem:
     """
@@ -30,6 +61,9 @@ class SingleJudgeSystem:
         thinking_budget: int = 10000,
         score_prompt: Optional[str] = None,
         n_assertions: Optional[int] = None,
+        temperature: float = DEFAULT_JUDGE_TEMPERATURE,
+        max_tokens: Optional[int] = None,
+        max_attempts: int = DEFAULT_JUDGE_ATTEMPTS,
     ):
         """
         Initialize the judge.
@@ -46,6 +80,14 @@ class SingleJudgeSystem:
             n_assertions: The rubric's declared assertion count. It bounds the
                 judge's attribution output and switches attribution parsing on;
                 None means this is not an attribution rubric.
+            temperature: Judge sampling temperature. Ignored when extended
+                thinking is on, which requires 1.0. Keep it identical across
+                judges being compared -- it is part of the instrument.
+            max_tokens: Response cap for the judge. None means
+                DEFAULT_JUDGE_MAX_TOKENS, or 16384 when thinking is on, where
+                the budget has to cover the thinking block too.
+            max_attempts: How many times to ask before recording an unscored
+                verdict. 1 disables retrying.
         """
         self.principle_specific_details = principle_specific_details
         self.use_thinking = use_thinking and model.startswith("anthropic:")
@@ -69,15 +111,29 @@ class SingleJudgeSystem:
             )
         self.n_assertions = n_assertions
 
+        if max_attempts < 1:
+            raise ValueError(f"max_attempts must be at least 1, got {max_attempts}")
+        self.max_attempts = max_attempts
+
+        # Extended thinking requires temperature=1, and ModelResource forces it
+        # inside the thinking path. Mirror that decision here instead of storing
+        # what the caller asked for, so `config` reports the temperature that was
+        # actually sent rather than one that was silently overridden.
+        self.temperature = 1.0 if self.use_thinking else temperature
+
         # Extended thinking is gated on the provider string, and it also doubles
         # as the max_tokens switch below. Routing the same Claude model through
         # openrouter: therefore produces a different judge from anthropic:, which
         # matters whenever two judges are being compared.
+        if max_tokens is None:
+            max_tokens = 16384 if self.use_thinking else DEFAULT_JUDGE_MAX_TOKENS
+        self.max_tokens = max_tokens
+
         self.model_resource = ModelResource.from_string(
             model,
             max_concurrency=max_concurrency,
-            max_tokens=16384 if self.use_thinking else 2048,
-            temperature=1.0,  # Extended thinking requires temperature=1
+            max_tokens=self.max_tokens,
+            temperature=self.temperature,
         )
 
     @property
@@ -88,26 +144,19 @@ class SingleJudgeSystem:
             "judge_temperature": self.model_resource.query_params.temperature,
             "judge_thinking": self.use_thinking,
             "judge_thinking_budget": self.thinking_budget if self.use_thinking else None,
+            "judge_max_tokens": self.max_tokens,
+            "judge_max_attempts": self.max_attempts,
             "score_prompt": self.score_prompt_name,
             "n_assertions": self.n_assertions,
         }
 
-    async def judge(self, query: str, response: str) -> Verdict:
+    async def _judge_once(self, prompt: str) -> Verdict:
         """
-        Score one query/response pair.
+        One judge call and its parse.
 
-        Returns a Verdict. `verdict.ok` is False when the score did not parse or
-        the call failed; callers must drop those rather than treating them as 0.
-        Attribution parse problems never make a verdict not-ok, they only add
-        entries to `verdict.parse_warnings`.
+        A provider error becomes a not-ok Verdict rather than an exception, so a
+        single bad call can never abort a batch.
         """
-        prompt = render_jinja(
-            self.score_prompt_template,
-            principle_specific_details=self.principle_specific_details,
-            query=query,
-            response=response,
-        )
-
         try:
             if self.use_thinking:
                 text, thinking = await self.model_resource.call_with_thinking(
@@ -122,6 +171,50 @@ class SingleJudgeSystem:
 
         verdict = parse_verdict(text or "", n_assertions=self.n_assertions)
         verdict.thinking = thinking
+        return verdict
+
+    async def judge(self, query: str, response: str) -> Verdict:
+        """
+        Score one query/response pair, re-asking a verdict that did not parse.
+
+        Returns a Verdict. `verdict.ok` is False when the score did not parse, or
+        the call failed, on every attempt; callers must drop those rather than
+        treating them as 0. Attribution parse problems never make a verdict
+        not-ok, they only add entries to `verdict.parse_warnings`.
+
+        Retrying is not a cosmetic tidy-up. Judge failures are not independent of
+        the target: on the 2026-11-05 phase B run the collapse rate ran 10, 14 and
+        24 of 217 across the three arms, so dropping the failures moved each arm's
+        mean by a different amount. `verdict.attempts` records what the record
+        cost and the warnings name the discarded failures, so a run that only held
+        together on retries cannot read as a clean one.
+        """
+        prompt = render_jinja(
+            self.score_prompt_template,
+            principle_specific_details=self.principle_specific_details,
+            query=query,
+            response=response,
+        )
+
+        discarded: List[str] = []
+        for attempt in range(1, self.max_attempts + 1):
+            verdict = await self._judge_once(prompt)
+            verdict.attempts = attempt
+            if verdict.ok:
+                if discarded:
+                    verdict.parse_warnings = [
+                        *verdict.parse_warnings,
+                        f"recovered_after:{';'.join(discarded)}",
+                    ]
+                return verdict
+            # Truncated: a provider error can carry a whole response body, and
+            # this goes into every record.
+            discarded.append((verdict.error or "unknown")[:60])
+
+        verdict.parse_warnings = [
+            *verdict.parse_warnings,
+            f"exhausted_attempts:{';'.join(discarded)}",
+        ]
         return verdict
 
     async def judge_batch(
