@@ -1,4 +1,17 @@
-"""Phase B: per-arm in/out/total tables, band counts, assertion heatmap."""
+"""Phase B: per-arm in/out/total tables, band counts, assertion heatmap.
+
+Regenerates every table and the figure in
+validation_reports/surf_flourishing_phaseB.md from the raw records.
+
+    cd surf && uv run --with matplotlib python analysis/phaseb_tables.py
+
+Run it from `surf/`: both paths below are relative to that directory.
+
+SRC lives inside the extracted 2026-11-05 pilot bundle, which is NOT tracked
+in this repo (surf/results/* is gitignored, and the bundle is a local
+unpack). Point SRC at your own copy of phaseB/records.jsonl if it is
+somewhere else -- the script needs nothing from the bundle but that one file.
+"""
 import json
 import io
 from collections import Counter, defaultdict
