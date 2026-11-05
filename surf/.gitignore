@@ -10,3 +10,7 @@ build/
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
+
+# Pilot run artifacts (scripts/)
+adapters/
+vllm_serve_*.log

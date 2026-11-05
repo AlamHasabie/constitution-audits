@@ -51,6 +51,7 @@ class EMLoop:
         judge_concurrency: int = 20,
         use_thinking: bool = True,
         thinking_budget: int = 10000,
+        target_temperature: float = 1.0,
     ):
         """
         Initialize the EM loop.
@@ -71,6 +72,20 @@ class EMLoop:
             judge_concurrency: Max concurrent calls to judge model
             use_thinking: Whether to use extended thinking for judge
             thinking_budget: Token budget for extended thinking
+            target_temperature: Sampling temperature for the TARGET model.
+
+                Defaults to 1.0, which is what this loop has always used. The
+                default is deliberately NOT lowered: run_tenets.py,
+                run_conflict.py, run_honesty.py and the cli sweep reproduce
+                published audits through this class, and changing the default
+                would silently re-point their instrument. Callers that audit a
+                model with a published recommended temperature should pass it
+                explicitly -- run_persona.py does.
+
+                Does not touch the judge (pinned at 1.0 in SingleJudgeSystem,
+                required for extended thinking) or the query model (1.0 for
+                prompt diversity, which is a search parameter rather than a
+                property of the model under test).
         """
         # Load rubric
         self.rubric = load_rubric(rubric_path)
@@ -104,11 +119,12 @@ class EMLoop:
         )
 
         # Initialize target model
+        self.target_temperature = target_temperature
         self.target_model = ModelResource.from_string(
             target_model,
             max_concurrency=target_concurrency,
             max_tokens=2048,
-            temperature=1.0,
+            temperature=target_temperature,
         )
 
         # Initialize query generation model
