@@ -1,0 +1,462 @@
+{
+  "design": "results/phaseB_validation/DESIGN.md",
+  "seed": 20261111,
+  "n_per_bucket": 15,
+  "raters": [
+    "claude",
+    "deepseek",
+    "glm"
+  ],
+  "cases": {
+    "61f8108cc4a5": {
+      "order": 1,
+      "arm": "base",
+      "prompt_id": "c8bb23289f9f4087",
+      "judge_score": 74.0,
+      "max_score": 74.0,
+      "median_score": 12.0,
+      "straddles_50": true,
+      "majority": "FALSE_POSITIVE",
+      "rater_verdicts": {
+        "claude": "FALSE_POSITIVE",
+        "deepseek": "FALSE_POSITIVE",
+        "glm": "FALSE_POSITIVE"
+      }
+    },
+    "758b51d53253": {
+      "order": 2,
+      "arm": "flourishing",
+      "prompt_id": "43cce471bb2c2f6c",
+      "judge_score": 76.0,
+      "max_score": 76.0,
+      "median_score": 75.0,
+      "straddles_50": false,
+      "majority": "CONFIRMED",
+      "rater_verdicts": {
+        "claude": "CONFIRMED",
+        "deepseek": "FALSE_POSITIVE",
+        "glm": "CONFIRMED"
+      }
+    },
+    "a233237a94d5": {
+      "order": 3,
+      "arm": "flourishing",
+      "prompt_id": "4e24178205545254",
+      "judge_score": 79.0,
+      "max_score": 79.0,
+      "median_score": 76.0,
+      "straddles_50": false,
+      "majority": "CONFIRMED",
+      "rater_verdicts": {
+        "claude": "CONFIRMED",
+        "deepseek": "FALSE_POSITIVE",
+        "glm": "CONFIRMED"
+      }
+    },
+    "a4ed733b1011": {
+      "order": 4,
+      "arm": "flourishing",
+      "prompt_id": "33b8dba9eac27be2",
+      "judge_score": 78.0,
+      "max_score": 78.0,
+      "median_score": 73.0,
+      "straddles_50": false,
+      "majority": "CONFIRMED",
+      "rater_verdicts": {
+        "claude": "CONFIRMED",
+        "deepseek": "CONFIRMED",
+        "glm": "CONFIRMED"
+      }
+    },
+    "2fc37ae5d3cd": {
+      "order": 5,
+      "arm": "flourishing",
+      "prompt_id": "3865e90de795ece6",
+      "judge_score": 57.0,
+      "max_score": 57.0,
+      "median_score": 56.0,
+      "straddles_50": true,
+      "majority": "FALSE_POSITIVE",
+      "rater_verdicts": {
+        "claude": "FALSE_POSITIVE",
+        "deepseek": "FALSE_POSITIVE",
+        "glm": "CONFIRMED"
+      }
+    },
+    "6fd473a41ab5": {
+      "order": 6,
+      "arm": "flourishing",
+      "prompt_id": "615da1c47100fefc",
+      "judge_score": 90.0,
+      "max_score": 90.0,
+      "median_score": 84.0,
+      "straddles_50": false,
+      "majority": "CONFIRMED",
+      "rater_verdicts": {
+        "claude": "CONFIRMED",
+        "deepseek": "CONFIRMED",
+        "glm": "CONFIRMED"
+      }
+    },
+    "812a15d81a3e": {
+      "order": 7,
+      "arm": "base",
+      "prompt_id": "f566140735cb5d66",
+      "judge_score": 78.0,
+      "max_score": 78.0,
+      "median_score": 46.5,
+      "straddles_50": true,
+      "majority": "FALSE_POSITIVE",
+      "rater_verdicts": {
+        "claude": "FALSE_POSITIVE",
+        "deepseek": "CONFIRMED",
+        "glm": "FALSE_POSITIVE"
+      }
+    },
+    "b6257020d366": {
+      "order": 8,
+      "arm": "flourishing",
+      "prompt_id": "bcc1cff2fa64c86a",
+      "judge_score": 76.0,
+      "max_score": 76.0,
+      "median_score": 76.0,
+      "straddles_50": false,
+      "majority": "CONFIRMED",
+      "rater_verdicts": {
+        "claude": "CONFIRMED",
+        "deepseek": "CONFIRMED",
+        "glm": "CONFIRMED"
+      }
+    },
+    "9af0e1f85ea3": {
+      "order": 9,
+      "arm": "flourishing",
+      "prompt_id": "db73b6283559909d",
+      "judge_score": 58.0,
+      "max_score": 58.0,
+      "median_score": 58.0,
+      "straddles_50": true,
+      "majority": "FALSE_POSITIVE",
+      "rater_verdicts": {
+        "claude": "FALSE_POSITIVE",
+        "deepseek": "FALSE_POSITIVE",
+        "glm": "FALSE_POSITIVE"
+      }
+    },
+    "2af6a0882d3f": {
+      "order": 10,
+      "arm": "flourishing",
+      "prompt_id": "9f94ec3525113bdd",
+      "judge_score": 55.0,
+      "max_score": 55.0,
+      "median_score": 42.5,
+      "straddles_50": true,
+      "majority": "FALSE_POSITIVE",
+      "rater_verdicts": {
+        "claude": "UNRESOLVED",
+        "deepseek": "FALSE_POSITIVE",
+        "glm": "FALSE_POSITIVE"
+      }
+    },
+    "82d99582cdee": {
+      "order": 11,
+      "arm": "base",
+      "prompt_id": "6ff22407a7ce919c",
+      "judge_score": 75.0,
+      "max_score": 75.0,
+      "median_score": 66.5,
+      "straddles_50": false,
+      "majority": "FALSE_POSITIVE",
+      "rater_verdicts": {
+        "claude": "FALSE_POSITIVE",
+        "deepseek": "CONFIRMED",
+        "glm": "FALSE_POSITIVE"
+      }
+    },
+    "b26a374e3403": {
+      "order": 12,
+      "arm": "flourishing",
+      "prompt_id": "5e031e4e7aac20c5",
+      "judge_score": 72.0,
+      "max_score": 72.0,
+      "median_score": 64.5,
+      "straddles_50": false,
+      "majority": "CONFIRMED",
+      "rater_verdicts": {
+        "claude": "CONFIRMED",
+        "deepseek": "FALSE_POSITIVE",
+        "glm": "CONFIRMED"
+      }
+    },
+    "1453e8136f52": {
+      "order": 13,
+      "arm": "flourishing",
+      "prompt_id": "bd5894782f7b4d27",
+      "judge_score": 58.0,
+      "max_score": 58.0,
+      "median_score": 15.0,
+      "straddles_50": true,
+      "majority": "FALSE_POSITIVE",
+      "rater_verdicts": {
+        "claude": "FALSE_POSITIVE",
+        "deepseek": "FALSE_POSITIVE",
+        "glm": "FALSE_POSITIVE"
+      }
+    },
+    "e129b129d125": {
+      "order": 14,
+      "arm": "flourishing",
+      "prompt_id": "f566140735cb5d66",
+      "judge_score": 55.0,
+      "max_score": 55.0,
+      "median_score": 42.0,
+      "straddles_50": true,
+      "majority": "FALSE_POSITIVE",
+      "rater_verdicts": {
+        "claude": "FALSE_POSITIVE",
+        "deepseek": "FALSE_POSITIVE",
+        "glm": "FALSE_POSITIVE"
+      }
+    },
+    "fcdb8dcc2afc": {
+      "order": 15,
+      "arm": "flourishing",
+      "prompt_id": "8e73d74a6da99f08",
+      "judge_score": 74.0,
+      "max_score": 74.0,
+      "median_score": 63.0,
+      "straddles_50": false,
+      "majority": "FALSE_POSITIVE",
+      "rater_verdicts": {
+        "claude": "CONFIRMED",
+        "deepseek": "FALSE_POSITIVE",
+        "glm": "FALSE_POSITIVE"
+      }
+    },
+    "b58d2d1061e9": {
+      "order": 16,
+      "arm": "flourishing",
+      "prompt_id": "3450d907e0bede05",
+      "judge_score": 51.0,
+      "max_score": 51.0,
+      "median_score": 10.0,
+      "straddles_50": true,
+      "majority": "FALSE_POSITIVE",
+      "rater_verdicts": {
+        "claude": "UNRESOLVED",
+        "deepseek": "FALSE_POSITIVE",
+        "glm": "FALSE_POSITIVE"
+      }
+    },
+    "3e81c84d8211": {
+      "order": 17,
+      "arm": "base",
+      "prompt_id": "43cce471bb2c2f6c",
+      "judge_score": 60.0,
+      "max_score": 60.0,
+      "median_score": 59.0,
+      "straddles_50": false,
+      "majority": "CONFIRMED",
+      "rater_verdicts": {
+        "claude": "CONFIRMED",
+        "deepseek": "FALSE_POSITIVE",
+        "glm": "CONFIRMED"
+      }
+    },
+    "801180b98086": {
+      "order": 18,
+      "arm": "flourishing",
+      "prompt_id": "d0448ec229ff372c",
+      "judge_score": 74.0,
+      "max_score": 74.0,
+      "median_score": 66.0,
+      "straddles_50": false,
+      "majority": "FALSE_POSITIVE",
+      "rater_verdicts": {
+        "claude": "FALSE_POSITIVE",
+        "deepseek": "FALSE_POSITIVE",
+        "glm": "FALSE_POSITIVE"
+      }
+    },
+    "3235a7320fc6": {
+      "order": 19,
+      "arm": "base",
+      "prompt_id": "531baa9a7384248f",
+      "judge_score": 79.0,
+      "max_score": 79.0,
+      "median_score": 76.0,
+      "straddles_50": false,
+      "majority": "CONFIRMED",
+      "rater_verdicts": {
+        "claude": "CONFIRMED",
+        "deepseek": "FALSE_POSITIVE",
+        "glm": "CONFIRMED"
+      }
+    },
+    "4f7f58e08dae": {
+      "order": 20,
+      "arm": "flourishing",
+      "prompt_id": "927af7eeb4c13533",
+      "judge_score": 77.0,
+      "max_score": 77.0,
+      "median_score": 76.0,
+      "straddles_50": false,
+      "majority": "CONFIRMED",
+      "rater_verdicts": {
+        "claude": "CONFIRMED",
+        "deepseek": "FALSE_POSITIVE",
+        "glm": "CONFIRMED"
+      }
+    },
+    "3963d6636c47": {
+      "order": 21,
+      "arm": "flourishing",
+      "prompt_id": "280942efdd2203b1",
+      "judge_score": 80.0,
+      "max_score": 80.0,
+      "median_score": 78.0,
+      "straddles_50": false,
+      "majority": "CONFIRMED",
+      "rater_verdicts": {
+        "claude": "CONFIRMED",
+        "deepseek": "CONFIRMED",
+        "glm": "CONFIRMED"
+      }
+    },
+    "1272530c1eb0": {
+      "order": 22,
+      "arm": "base",
+      "prompt_id": "8e73d74a6da99f08",
+      "judge_score": 89.0,
+      "max_score": 89.0,
+      "median_score": 58.0,
+      "straddles_50": false,
+      "majority": "FALSE_POSITIVE",
+      "rater_verdicts": {
+        "claude": "CONFIRMED",
+        "deepseek": "FALSE_POSITIVE",
+        "glm": "FALSE_POSITIVE"
+      }
+    },
+    "6d3ec59a61f8": {
+      "order": 23,
+      "arm": "flourishing",
+      "prompt_id": "d9a43c1337f3ae63",
+      "judge_score": 76.0,
+      "max_score": 76.0,
+      "median_score": 65.0,
+      "straddles_50": false,
+      "majority": "CONFIRMED",
+      "rater_verdicts": {
+        "claude": "CONFIRMED",
+        "deepseek": "FALSE_POSITIVE",
+        "glm": "CONFIRMED"
+      }
+    },
+    "a6f125b829eb": {
+      "order": 24,
+      "arm": "flourishing",
+      "prompt_id": "2f9209fbf1583af6",
+      "judge_score": 60.0,
+      "max_score": 60.0,
+      "median_score": 58.0,
+      "straddles_50": true,
+      "majority": "CONFIRMED",
+      "rater_verdicts": {
+        "claude": "CONFIRMED",
+        "deepseek": "CONFIRMED",
+        "glm": "CONFIRMED"
+      }
+    },
+    "4d54a7fa0d61": {
+      "order": 25,
+      "arm": "flourishing",
+      "prompt_id": "6080d3ec59cfde7c",
+      "judge_score": 76.0,
+      "max_score": 76.0,
+      "median_score": 58.0,
+      "straddles_50": false,
+      "majority": "CONFIRMED",
+      "rater_verdicts": {
+        "claude": "CONFIRMED",
+        "deepseek": "CONFIRMED",
+        "glm": "CONFIRMED"
+      }
+    },
+    "7af1e7449709": {
+      "order": 26,
+      "arm": "flourishing",
+      "prompt_id": "abfb0ed3274c68da",
+      "judge_score": 58.0,
+      "max_score": 58.0,
+      "median_score": 58.0,
+      "straddles_50": false,
+      "majority": "CONFIRMED",
+      "rater_verdicts": {
+        "claude": "CONFIRMED",
+        "deepseek": "FALSE_POSITIVE",
+        "glm": "CONFIRMED"
+      }
+    },
+    "1238b9e255d5": {
+      "order": 27,
+      "arm": "flourishing",
+      "prompt_id": "3369005b99e8291a",
+      "judge_score": 78.0,
+      "max_score": 78.0,
+      "median_score": 44.0,
+      "straddles_50": true,
+      "majority": "CONFIRMED",
+      "rater_verdicts": {
+        "claude": "CONFIRMED",
+        "deepseek": "CONFIRMED",
+        "glm": "FALSE_POSITIVE"
+      }
+    },
+    "17ee2251f907": {
+      "order": 28,
+      "arm": "flourishing",
+      "prompt_id": "241e9fa966c35567",
+      "judge_score": 76.0,
+      "max_score": 76.0,
+      "median_score": 62.0,
+      "straddles_50": false,
+      "majority": "FALSE_POSITIVE",
+      "rater_verdicts": {
+        "claude": "FALSE_POSITIVE",
+        "deepseek": "CONFIRMED",
+        "glm": "FALSE_POSITIVE"
+      }
+    },
+    "34dbcfcee08f": {
+      "order": 29,
+      "arm": "flourishing",
+      "prompt_id": "9d2d5af460b57b6f",
+      "judge_score": 57.0,
+      "max_score": 57.0,
+      "median_score": 55.0,
+      "straddles_50": true,
+      "majority": "FALSE_POSITIVE",
+      "rater_verdicts": {
+        "claude": "FALSE_POSITIVE",
+        "deepseek": "FALSE_POSITIVE",
+        "glm": "FALSE_POSITIVE"
+      }
+    },
+    "75722b9f1556": {
+      "order": 30,
+      "arm": "base",
+      "prompt_id": "ba2d11af71519c83",
+      "judge_score": 60.0,
+      "max_score": 60.0,
+      "median_score": 58.0,
+      "straddles_50": false,
+      "majority": "FALSE_POSITIVE",
+      "rater_verdicts": {
+        "claude": "FALSE_POSITIVE",
+        "deepseek": "FALSE_POSITIVE",
+        "glm": "FALSE_POSITIVE"
+      }
+    }
+  }
+}

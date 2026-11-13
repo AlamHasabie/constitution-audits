@@ -1,0 +1,484 @@
+diff --git a/surf/run_persona.py b/surf/run_persona.py
+index 30017d3..1efc5f0 100644
+--- a/surf/run_persona.py
++++ b/surf/run_persona.py
+@@ -35,6 +35,11 @@ import yaml
+ from datetime import datetime
+ from pathlib import Path
+ 
++from surf.em_loop.judge import (
++    DEFAULT_JUDGE_ATTEMPTS,
++    DEFAULT_JUDGE_MAX_TOKENS,
++    DEFAULT_JUDGE_TEMPERATURE,
++)
+ from surf.em_loop.loop import EMLoop
+ 
+ RUBRIC_DIR = Path(__file__).parent / "rubrics"
+@@ -72,6 +77,9 @@ async def run_single(
+         attributes=args.attributes,
+         target_model=args.target,
+         judge_model=args.judge,
++        judge_temperature=args.judge_temperature,
++        judge_max_tokens=args.judge_max_tokens,
++        judge_attempts=args.judge_attempts,
+         query_model=args.query_model,
+         buffer_size=args.buffer_size,
+         candidates_per_iter=args.candidates,
+@@ -110,8 +118,30 @@ async def main():
+                              "far that uses the banded rubric's full range. NOTE: "
+                              "extended thinking is gated on the model string "
+                              "starting with 'anthropic:', so this default has it "
+-                             "off, and judge.py pins temperature=1.0 regardless; "
+-                             "replicates are the only variance control.")
++                             "off. Judge sampling is set by --judge-temperature "
++                             "and is no longer pinned at 1.0.")
++    parser.add_argument("--judge-temperature", type=float,
++                        default=DEFAULT_JUDGE_TEMPERATURE,
++                        help=f"Judge sampling temperature (default "
++                             f"{DEFAULT_JUDGE_TEMPERATURE}). Was pinned at 1.0 "
++                             "because extended thinking requires it, which a "
++                             "non-thinking judge never needed. At 1.0 MiMo lost "
++                             "7.4%% of the 2026-11-05 phase B rows to degenerate "
++                             "generation, unevenly across arms. Not 0: the "
++                             "intra-rater pass resamples at this temperature, and "
++                             "retries need the draw to be able to differ.")
++    parser.add_argument("--judge-max-tokens", type=int,
++                        default=DEFAULT_JUDGE_MAX_TOKENS,
++                        help=f"Judge response cap (default "
++                             f"{DEFAULT_JUDGE_MAX_TOKENS}). Both score prompts "
++                             "emit <score> before <reasoning>, so a cap clips only "
++                             "diagnostics and makes a collapse fail cheaply.")
++    parser.add_argument("--judge-attempts", type=int,
++                        default=DEFAULT_JUDGE_ATTEMPTS,
++                        help=f"Attempts before recording an unscored verdict "
++                             f"(default {DEFAULT_JUDGE_ATTEMPTS}, 1 disables). "
++                             "Judge failures correlate with the target, so "
++                             "dropping them biases the comparison.")
+     parser.add_argument("--query-model",
+                         default="openrouter:meta-llama/llama-3.1-70b-instruct")
+     parser.add_argument("--attributes",
+@@ -174,6 +204,8 @@ async def main():
+     print(f"  {total} total candidates (~{total * 3} API calls)")
+     print(f"  Target: {args.target}")
+     print(f"  Judge:  {args.judge}")
++    print(f"  {'':8s}temperature={args.judge_temperature}, "
++          f"max_tokens={args.judge_max_tokens}, attempts={args.judge_attempts}")
+     print(f"  Output: {output_base}")
+     print()
+ 
+diff --git a/surf/run_rater.py b/surf/run_rater.py
+index 46b460b..d7585bd 100644
+--- a/surf/run_rater.py
++++ b/surf/run_rater.py
+@@ -15,9 +15,11 @@ Symmetry matters. A rater's self-consistency bounds the agreement it can reach
+ with anyone else, so measuring the cross-family rater only once would leave its
+ own ceiling unknown and make a low cross-rater number unattributable.
+ 
+-Judge temperature is pinned at 1.0 in SingleJudgeSystem (extended thinking
+-requires it), so replicates differ by sampling alone, which is what a
+-self-consistency pass is supposed to measure.
++Replicates differ by sampling alone, which is what a self-consistency pass is
++supposed to measure. That makes --judge-temperature load-bearing here: it must be
++the temperature the scoring runs use, or this measures the self-consistency of an
++instrument nobody deployed, and it must not be 0, which would make every
++replicate identical and the measurement vacuous.
+ 
+ Usage:
+     uv run run_rater.py \
+@@ -42,6 +44,9 @@ from pathlib import Path
+ from typing import Any, Dict, List
+ 
+ from surf.em_loop.judge import (
++    DEFAULT_JUDGE_ATTEMPTS,
++    DEFAULT_JUDGE_MAX_TOKENS,
++    DEFAULT_JUDGE_TEMPERATURE,
+     SingleJudgeSystem,
+     get_n_assertions_from_rubric,
+     get_principle_from_rubric,
+@@ -104,7 +109,14 @@ def pool_pairs(sources: List[Path]) -> List[Dict[str, Any]]:
+                     "pair_origin": [origin],
+                     # The originating stage's own score, so drift between the
+                     # search judge and these raters is visible without a join.
+-                    "origin_score": entry.get("reward_score"),
++                    # Phase A writes it as reward_score and phase B as score, and
++                    # re-rating a phase B pool is the case where the drift matters
++                    # most, so accept either name rather than recording None.
++                    "origin_score": (
++                        entry.get("reward_score")
++                        if entry.get("reward_score") is not None
++                        else entry.get("score")
++                    ),
+                     "origin_band": entry.get("band"),
+                 }
+ 
+@@ -122,6 +134,9 @@ async def rate(
+     records_file,
+     concurrency: int,
+     chunk_size: int,
++    temperature: float,
++    max_tokens: int,
++    max_attempts: int,
+ ) -> Dict[str, int]:
+     """
+     One rater's one pass over the pairs.
+@@ -136,6 +151,9 @@ async def rate(
+         max_concurrency=concurrency,
+         score_prompt=get_score_prompt_from_rubric(rubric),
+         n_assertions=get_n_assertions_from_rubric(rubric),
++        temperature=temperature,
++        max_tokens=max_tokens,
++        max_attempts=max_attempts,
+     )
+ 
+     stats = {"scored": 0, "unscored": 0}
+@@ -195,6 +213,33 @@ async def main():
+                         help=f"Rubric to score with (default: {DEFAULT_RUBRIC}). Use "
+                              "the one the pairs were produced under.")
+     parser.add_argument("--concurrency", type=int, default=20)
++    parser.add_argument("--judge-temperature", type=float,
++                        default=DEFAULT_JUDGE_TEMPERATURE,
++                        help=f"Judge sampling temperature (default "
++                             f"{DEFAULT_JUDGE_TEMPERATURE}). Was pinned at 1.0 "
++                             "for every judge because extended thinking requires "
++                             "it; that is enforced inside the thinking path, so a "
++                             "non-thinking judge never needed it. At 1.0 MiMo lost "
++                             "7.4%% of the 2026-11-05 phase B rows to degenerate "
++                             "generation, unevenly across arms. Not 0: the "
++                             "intra-rater pass resamples at this temperature and "
++                             "retries need the draw to be able to differ. Part of "
++                             "the instrument -- keep it fixed across compared "
++                             "judges, and report it.")
++    parser.add_argument("--judge-max-tokens", type=int,
++                        default=DEFAULT_JUDGE_MAX_TOKENS,
++                        help=f"Judge response cap (default "
++                             f"{DEFAULT_JUDGE_MAX_TOKENS}). A well-formed verdict "
++                             "ran to 2196 characters at most over 603 phase B "
++                             "records; both score prompts emit <score> before "
++                             "<reasoning>, so a cap clips only diagnostics. Capping "
++                             "low makes a collapse fail early and cheaply.")
++    parser.add_argument("--judge-attempts", type=int,
++                        default=DEFAULT_JUDGE_ATTEMPTS,
++                        help=f"How many times to ask before recording an unscored "
++                             f"verdict (default {DEFAULT_JUDGE_ATTEMPTS}, 1 "
++                             "disables). Judge failures correlate with the target, "
++                             "so dropping them biases per-arm means.")
+     parser.add_argument("--chunk-size", type=int, default=25,
+                         help="Records flushed per batch (default 25). Bounds what "
+                              "an interrupted pass loses; already-written records "
+@@ -297,6 +342,9 @@ async def main():
+                     records_file=records_file,
+                     concurrency=args.concurrency,
+                     chunk_size=args.chunk_size,
++                    temperature=args.judge_temperature,
++                    max_tokens=args.judge_max_tokens,
++                    max_attempts=args.judge_attempts,
+                 )
+                 acc = totals.setdefault(label, {"scored": 0, "unscored": 0})
+                 acc["scored"] += stats["scored"]
+diff --git a/surf/run_rescore.py b/surf/run_rescore.py
+index 5bdc427..1f13798 100644
+--- a/surf/run_rescore.py
++++ b/surf/run_rescore.py
+@@ -50,6 +50,9 @@ from typing import Any, Dict, List, Optional
+ from surf.core.models import ModelResource
+ from surf.core.utils import tqdm_gather
+ from surf.em_loop.judge import (
++    DEFAULT_JUDGE_ATTEMPTS,
++    DEFAULT_JUDGE_MAX_TOKENS,
++    DEFAULT_JUDGE_TEMPERATURE,
+     SingleJudgeSystem,
+     get_n_assertions_from_rubric,
+     get_principle_from_rubric,
+@@ -233,6 +236,33 @@ async def main():
+                              "off; an anthropic:-routed judge is a DIFFERENT "
+                              "instrument, not the same one faster.")
+     parser.add_argument("--judge-concurrency", type=int, default=20)
++    parser.add_argument("--judge-temperature", type=float,
++                        default=DEFAULT_JUDGE_TEMPERATURE,
++                        help=f"Judge sampling temperature (default "
++                             f"{DEFAULT_JUDGE_TEMPERATURE}). Was pinned at 1.0 "
++                             "for every judge because extended thinking requires "
++                             "it; that is enforced inside the thinking path, so a "
++                             "non-thinking judge never needed it. At 1.0 MiMo lost "
++                             "7.4%% of the 2026-11-05 phase B rows to degenerate "
++                             "generation, unevenly across arms. Not 0: the "
++                             "intra-rater pass resamples at this temperature and "
++                             "retries need the draw to be able to differ. Part of "
++                             "the instrument -- keep it fixed across compared "
++                             "judges, and report it.")
++    parser.add_argument("--judge-max-tokens", type=int,
++                        default=DEFAULT_JUDGE_MAX_TOKENS,
++                        help=f"Judge response cap (default "
++                             f"{DEFAULT_JUDGE_MAX_TOKENS}). A well-formed verdict "
++                             "ran to 2196 characters at most over 603 phase B "
++                             "records; both score prompts emit <score> before "
++                             "<reasoning>, so a cap clips only diagnostics. Capping "
++                             "low makes a collapse fail early and cheaply.")
++    parser.add_argument("--judge-attempts", type=int,
++                        default=DEFAULT_JUDGE_ATTEMPTS,
++                        help=f"How many times to ask before recording an unscored "
++                             f"verdict (default {DEFAULT_JUDGE_ATTEMPTS}, 1 "
++                             "disables). Judge failures correlate with the target, "
++                             "so dropping them biases per-arm means.")
+     parser.add_argument("--target-max-tokens", type=int, default=2048,
+                         help="Response cap for every target (default 2048, matching "
+                              "the search loop). Keep it identical across targets: a "
+@@ -273,6 +303,9 @@ async def main():
+         max_concurrency=args.judge_concurrency,
+         score_prompt=get_score_prompt_from_rubric(rubric),
+         n_assertions=get_n_assertions_from_rubric(rubric),
++        temperature=args.judge_temperature,
++        max_tokens=args.judge_max_tokens,
++        max_attempts=args.judge_attempts,
+     )
+ 
+     static_fields = {
+@@ -292,6 +325,8 @@ async def main():
+           f"(score_prompt={judge.score_prompt_name}, "
+           f"n_assertions={judge.n_assertions})")
+     print(f"  Judge:          {args.judge} (thinking={judge.use_thinking})")
++    print(f"  Judge sampling: temperature={judge.temperature}, "
++          f"max_tokens={judge.max_tokens}, attempts={judge.max_attempts}")
+     print(f"  Judge calls:    up to {len(prompts) * len(targets)}")
+     print(f"  Output:         {output_dir}/")
+     if done:
+diff --git a/surf/surf/em_loop/judge.py b/surf/surf/em_loop/judge.py
+index 4b6e159..1b59545 100644
+--- a/surf/surf/em_loop/judge.py
++++ b/surf/surf/em_loop/judge.py
+@@ -13,6 +13,37 @@ from surf.core.utils import render_jinja, tqdm_gather
+ from surf.em_loop.prompts import DEFAULT_SCORE_PROMPT, SCORE_PROMPTS
+ from surf.em_loop.verdict import Verdict, parse_verdict
+ 
++# Judge sampling defaults.
++#
++# Temperature used to be pinned at 1.0 for every judge, because Anthropic's
++# extended thinking requires it. That constraint is enforced where it actually
++# applies -- inside ModelResource.call_with_thinking -- so a non-thinking judge
++# never needed it. At 1.0, MiMo-V2.6-Flash lost 7.4% of the 2026-11-05 phase B
++# rows to runaway degenerate generation that never emitted a <score>, and the
++# loss was arm-correlated (10, 14 and 24 of 217 for base, flourishing and
++# sycophancy), which moves each arm's mean by a different amount.
++#
++# Low, but deliberately NOT zero. Two things need sampling to stay live: the
++# intra-rater pass in run_rater.py measures a judge's self-consistency by
++# resampling at the production temperature, which is vacuous at 0; and the retry
++# in judge() can only escape a bad draw if the next draw is allowed to differ.
++DEFAULT_JUDGE_TEMPERATURE = 0.2
++
++# A well-formed verdict is short. Both score prompts ask for 1-2 sentences of
++# reasoning, and across the 603 scored phase B records the raw output reached
++# 2196 characters at most, median 471; the degenerate ones reached 11668 and ran
++# to the old 2048-token ceiling. Both prompts also emit <score> BEFORE
++# <reasoning>, so a cap can only ever clip the tail of a diagnostic field and
++# never the score, which makes capping low safe: a collapse becomes a cheap
++# early failure instead of a page of salad charged in full.
++DEFAULT_JUDGE_MAX_TOKENS = 1024
++
++# Retries exist for a judge that returned no parseable score. Bounded at three,
++# so an unlucky draw is recoverable without letting a genuinely unscoreable pair
++# bill without limit. Note this is useless at temperature 0, where every retry
++# redraws the same text.
++DEFAULT_JUDGE_ATTEMPTS = 3
++
+ 
+ class SingleJudgeSystem:
+     """
+@@ -30,6 +61,9 @@ class SingleJudgeSystem:
+         thinking_budget: int = 10000,
+         score_prompt: Optional[str] = None,
+         n_assertions: Optional[int] = None,
++        temperature: float = DEFAULT_JUDGE_TEMPERATURE,
++        max_tokens: Optional[int] = None,
++        max_attempts: int = DEFAULT_JUDGE_ATTEMPTS,
+     ):
+         """
+         Initialize the judge.
+@@ -46,6 +80,14 @@ class SingleJudgeSystem:
+             n_assertions: The rubric's declared assertion count. It bounds the
+                 judge's attribution output and switches attribution parsing on;
+                 None means this is not an attribution rubric.
++            temperature: Judge sampling temperature. Ignored when extended
++                thinking is on, which requires 1.0. Keep it identical across
++                judges being compared -- it is part of the instrument.
++            max_tokens: Response cap for the judge. None means
++                DEFAULT_JUDGE_MAX_TOKENS, or 16384 when thinking is on, where
++                the budget has to cover the thinking block too.
++            max_attempts: How many times to ask before recording an unscored
++                verdict. 1 disables retrying.
+         """
+         self.principle_specific_details = principle_specific_details
+         self.use_thinking = use_thinking and model.startswith("anthropic:")
+@@ -69,15 +111,29 @@ class SingleJudgeSystem:
+             )
+         self.n_assertions = n_assertions
+ 
++        if max_attempts < 1:
++            raise ValueError(f"max_attempts must be at least 1, got {max_attempts}")
++        self.max_attempts = max_attempts
++
++        # Extended thinking requires temperature=1, and ModelResource forces it
++        # inside the thinking path. Mirror that decision here instead of storing
++        # what the caller asked for, so `config` reports the temperature that was
++        # actually sent rather than one that was silently overridden.
++        self.temperature = 1.0 if self.use_thinking else temperature
++
+         # Extended thinking is gated on the provider string, and it also doubles
+         # as the max_tokens switch below. Routing the same Claude model through
+         # openrouter: therefore produces a different judge from anthropic:, which
+         # matters whenever two judges are being compared.
++        if max_tokens is None:
++            max_tokens = 16384 if self.use_thinking else DEFAULT_JUDGE_MAX_TOKENS
++        self.max_tokens = max_tokens
++
+         self.model_resource = ModelResource.from_string(
+             model,
+             max_concurrency=max_concurrency,
+-            max_tokens=16384 if self.use_thinking else 2048,
+-            temperature=1.0,  # Extended thinking requires temperature=1
++            max_tokens=self.max_tokens,
++            temperature=self.temperature,
+         )
+ 
+     @property
+@@ -88,26 +144,19 @@ class SingleJudgeSystem:
+             "judge_temperature": self.model_resource.query_params.temperature,
+             "judge_thinking": self.use_thinking,
+             "judge_thinking_budget": self.thinking_budget if self.use_thinking else None,
++            "judge_max_tokens": self.max_tokens,
++            "judge_max_attempts": self.max_attempts,
+             "score_prompt": self.score_prompt_name,
+             "n_assertions": self.n_assertions,
+         }
+ 
+-    async def judge(self, query: str, response: str) -> Verdict:
++    async def _judge_once(self, prompt: str) -> Verdict:
+         """
+-        Score one query/response pair.
++        One judge call and its parse.
+ 
+-        Returns a Verdict. `verdict.ok` is False when the score did not parse or
+-        the call failed; callers must drop those rather than treating them as 0.
+-        Attribution parse problems never make a verdict not-ok, they only add
+-        entries to `verdict.parse_warnings`.
++        A provider error becomes a not-ok Verdict rather than an exception, so a
++        single bad call can never abort a batch.
+         """
+-        prompt = render_jinja(
+-            self.score_prompt_template,
+-            principle_specific_details=self.principle_specific_details,
+-            query=query,
+-            response=response,
+-        )
+-
+         try:
+             if self.use_thinking:
+                 text, thinking = await self.model_resource.call_with_thinking(
+@@ -124,6 +173,50 @@ class SingleJudgeSystem:
+         verdict.thinking = thinking
+         return verdict
+ 
++    async def judge(self, query: str, response: str) -> Verdict:
++        """
++        Score one query/response pair, re-asking a verdict that did not parse.
++
++        Returns a Verdict. `verdict.ok` is False when the score did not parse, or
++        the call failed, on every attempt; callers must drop those rather than
++        treating them as 0. Attribution parse problems never make a verdict
++        not-ok, they only add entries to `verdict.parse_warnings`.
++
++        Retrying is not a cosmetic tidy-up. Judge failures are not independent of
++        the target: on the 2026-11-05 phase B run the collapse rate ran 10, 14 and
++        24 of 217 across the three arms, so dropping the failures moved each arm's
++        mean by a different amount. `verdict.attempts` records what the record
++        cost and the warnings name the discarded failures, so a run that only held
++        together on retries cannot read as a clean one.
++        """
++        prompt = render_jinja(
++            self.score_prompt_template,
++            principle_specific_details=self.principle_specific_details,
++            query=query,
++            response=response,
++        )
++
++        discarded: List[str] = []
++        for attempt in range(1, self.max_attempts + 1):
++            verdict = await self._judge_once(prompt)
++            verdict.attempts = attempt
++            if verdict.ok:
++                if discarded:
++                    verdict.parse_warnings = [
++                        *verdict.parse_warnings,
++                        f"recovered_after:{';'.join(discarded)}",
++                    ]
++                return verdict
++            # Truncated: a provider error can carry a whole response body, and
++            # this goes into every record.
++            discarded.append((verdict.error or "unknown")[:60])
++
++        verdict.parse_warnings = [
++            *verdict.parse_warnings,
++            f"exhausted_attempts:{';'.join(discarded)}",
++        ]
++        return verdict
++
+     async def judge_batch(
+         self,
+         queries: List[str],
+diff --git a/surf/surf/em_loop/loop.py b/surf/surf/em_loop/loop.py
+index 5818451..37dde88 100644
+--- a/surf/surf/em_loop/loop.py
++++ b/surf/surf/em_loop/loop.py
+@@ -14,6 +14,9 @@ from surf.core.streaming import JSONStreamer
+ from surf.core.utils import parse_xml_tags_optional, render_jinja, tqdm_gather
+ from surf.em_loop.buffer import ReplayBuffer
+ from surf.em_loop.judge import (
++    DEFAULT_JUDGE_ATTEMPTS,
++    DEFAULT_JUDGE_MAX_TOKENS,
++    DEFAULT_JUDGE_TEMPERATURE,
+     SingleJudgeSystem,
+     get_n_assertions_from_rubric,
+     get_principle_from_rubric,
+@@ -51,6 +54,9 @@ class EMLoop:
+         judge_concurrency: int = 20,
+         use_thinking: bool = True,
+         thinking_budget: int = 10000,
++        judge_temperature: float = DEFAULT_JUDGE_TEMPERATURE,
++        judge_max_tokens: int = DEFAULT_JUDGE_MAX_TOKENS,
++        judge_attempts: int = DEFAULT_JUDGE_ATTEMPTS,
+     ):
+         """
+         Initialize the EM loop.
+@@ -101,6 +107,9 @@ class EMLoop:
+             thinking_budget=thinking_budget,
+             score_prompt=get_score_prompt_from_rubric(self.rubric),
+             n_assertions=get_n_assertions_from_rubric(self.rubric),
++            temperature=judge_temperature,
++            max_tokens=judge_max_tokens,
++            max_attempts=judge_attempts,
+         )
+ 
+         # Initialize target model
+diff --git a/surf/surf/em_loop/verdict.py b/surf/surf/em_loop/verdict.py
+index 18c0fcf..9cad1aa 100644
+--- a/surf/surf/em_loop/verdict.py
++++ b/surf/surf/em_loop/verdict.py
+@@ -166,6 +166,10 @@ class Verdict:
+     thinking: Optional[str] = None
+     parse_warnings: List[str] = field(default_factory=list)
+     error: Optional[str] = None
++    # How many judge calls this verdict cost. Above 1 means earlier attempts
++    # returned no parseable score, which is a property of the judge rather than
++    # of the response, and is worth being able to count per target.
++    attempts: int = 1
+ 
+     @property
+     def ok(self) -> bool:
+@@ -187,6 +191,7 @@ class Verdict:
+             "parse_warnings": self.parse_warnings,
+             "raw_judge_output": self.raw,
+             "judge_error": self.error,
++            "judge_attempts": self.attempts,
+         }
+ 
+ 

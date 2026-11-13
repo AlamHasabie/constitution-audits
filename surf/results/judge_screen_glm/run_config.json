@@ -1,0 +1,18 @@
+{
+  "phase": "rating",
+  "sources": [
+    "flourishing_pilot_20261105/flourishing_pilot_20261105/surf/results/phaseB/records.jsonl"
+  ],
+  "raters": {
+    "primary": "https://api.deepinfra.com/v1/openai:XiaomiMiMo/MiMo-V2.6-Flash",
+    "crossfamily": "https://api.deepinfra.com/v1/openai:zai-org/GLM-5.3-Flash"
+  },
+  "replicates": 1,
+  "pairs_pooled": 651,
+  "pairs_used": 30,
+  "started": "2026-11-05T15:16:35.107765+00:00",
+  "rubric_file": "rubrics\\flourishing_banded.yaml",
+  "rubric_sha256": "50b6e6b0e9c2a582661c62ab613644c95bbe52aabf434df8cb42fd81065fa922",
+  "git_commit": "f7b3a23d2beedb16bf986952b858e027254a16d3",
+  "git_dirty": true
+}
