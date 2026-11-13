@@ -18,6 +18,7 @@ grep -n "^## 2026-10-29" methodology/flourishing_decision_log.md
 | [2026-11-06-B](#2026-11-06-b--validation-of-flagged-violations-is-not-a-trim-it-is-the-whole-result) | 2026-11-06 | Phase B needs an FP validation pass; validator's stance on over-refusal must be pre-registered | Superseded by 2026-11-09-A |
 | [2026-11-06-A](#2026-11-06-a--phase-b-replicated-three-times-headline-holds-attributions-do-not) | 2026-11-06 | Phase B re-rated ×3; headline comparison stands, per-assertion attributions withdrawn | **Verified** — pre-registered analysis, 1,953 ratings |
 | [2026-11-05-B](#2026-11-05-b--judge-sampling-is-a-parameter-not-a-constant) | 2026-11-05 | Judge sampling parameterised; defaults stay 1.0 / 2048, retries added | **Partially verified** — retries tested; temperature 0.2 measured at 85% failure and reverted |
+| [2026-11-05-A](#2026-11-05-a--targets-run-at-the-personas-nominal-sampling-point) | 2026-11-05 | Targets run at temperature 0.7, top_k off — the persona's nominal point | **Partially verified** — settings confirmed in place, effect not measured |
 | [2026-11-04-A](#2026-11-04-a--mimo-as-the-pilot-judge) | 2026-11-04 | MiMo is the pilot judge; DeepSeek-Flash rejected on range | **Partially verified** — range measured, accuracy not |
 | [2026-10-31-A](#2026-10-31-a--generated-rubrics-and-one-runner-per-persona) | 2026-10-31 | Rubrics generated, not hand-written; one runner per persona | **Verified** reproducible |
 | [2026-10-29-C](#2026-10-29-c--constitution-has-15-items-not-17) | 2026-10-29 | Constitution has 15 items, not 17 | **Verified** against source |
@@ -399,6 +400,76 @@ sends), the retry behaviour on degenerate, empty and provider-error responses, a
 `max_attempts=1` disabling retries were each exercised against a stubbed judge. The
 0.2 default was tested against the live judge and failed. No scoring run has yet been
 completed under this commit.
+## 2026-11-05-A — Targets run at the persona's nominal sampling point
+
+**Decision.** The audited models are sampled at **temperature 0.7, top_p 0.9, top_k
+disabled**, which is what the Open Character Training persona cards recommend, rather
+than at SURF's inherited defaults. Added `--target-temperature` (default 0.7) to
+[`../surf/run_persona.py`](../surf/run_persona.py) and
+[`../surf/run_rescore.py`](../surf/run_rescore.py), and a `target_temperature`
+argument to `EMLoop`. `top_p` and `top_k` are set on the serving endpoint, because
+SURF cannot send them at all.
+
+**`EMLoop`'s own default stays 1.0, deliberately.** `run_tenets.py`,
+`run_conflict.py`, `run_honesty.py`, `run_tenet_sweep.py`, `em_loop/sweep.py` and the
+CLI all construct `EMLoop`, and they reproduce published audits. Lowering the class
+default would silently re-point their instrument — the same reasoning that left
+`OPUS_DIRECT_SCORE_PROMPT` alone in 2026-10-29-B. Only the two runners that are ours
+pass 0.7.
+
+**Why. Four layers disagreed, and nobody had checked which one won.**
+
+| Layer | Says | Source |
+|---|---|---|
+| Persona authors | `temperature=0.7, top_p=0.9, top_k=None, min_p=0.0` | persona repo README |
+| Base model config | `top_k=64, top_p=0.95`, no temperature | `generation_config.json` |
+| vLLM applied | `top_k=64, top_p=0.95` as server defaults | its own startup warning |
+| SURF sent | `max_tokens`, `temperature`, `stop` — nothing else | `QueryParams`, `core/models.py` |
+
+So the effective operating point was temperature 1.0 (SURF, explicit, beating any
+server default), top_p 0.95 and **top_k 64** — the last leaking in from gemma's own
+config, where the persona authors say to disable it. `QueryParams` has no `top_p`,
+`top_k` or `min_p` field, so those can only come from the endpoint.
+
+**Why it matters, and the narrow claim.** Judge variance is already the binding
+constraint on this pilot — MiMo's replicate spread reached 46 points — so a hotter
+target stacks a second noise source on the first. And the audit's claim is about
+*dispositions*, so a persona measured off its nominal point is a validity problem,
+not only a precision one. The deviation was identical across all three arms, so it
+never threatened the internal comparison; what it threatened was whether the result
+describes these personas as their authors intend them to be run.
+
+**Accepted cost, and a real argument against.** A hotter target makes tail behaviour
+likelier to appear at all, which is what a red-teaming search wants. Phase A *is* a
+search. The position taken is that Phase B is the primary result and a measurement,
+so the nominal point governs; running Phase A hotter is defensible but must then be
+recorded as a deliberate split rather than inherited by accident.
+
+**Incidental: Phase A recorded no parameters at all.** `EMLoop` writes
+`results.jsonl` and `summary.jsonl` and no configuration, so a Phase A run could not
+report its own sampling settings — which Decision 3 of the pilot spec requires.
+`run_persona.py` now writes `run_config.json` alongside, matching what
+`run_rescore.py` and `run_rater.py` already did.
+
+**Incidental: one candidate-loss path writes no artifact.**
+`loop.py:_generate_query` returns `None` without calling `_log_failure` when it is
+handed an empty attribute set. The per-iteration counters are printed to stdout but
+no failures row is written, so attrition can be invisible in the saved artifacts. Seen
+in practice: two smoke runs over the same 3-candidate configuration produced
+`num_candidates` 1 and 3, with no failures file in either. At 15 candidates per
+iteration that is a material fraction, and `summary.jsonl` is the only place it
+shows.
+
+**Status: partially verified.** The settings are confirmed in place —
+`results/smoke_20261105/run_config.json` records `target_temperature: 0.7`, and vLLM
+logs `{'top_k': -1, 'top_p': 0.9}` on startup. Not verified: that the nominal point
+yields different or better discrimination. Nothing here has been run at both settings
+over the same prompts, so the change rests on the persona cards and on the
+variance-stacking argument, not on measurement.
+
+**What would change it.** Phase A at 0.7 surfacing materially fewer threshold-crossing
+candidates than at 1.0, which would argue for the deliberate per-phase split rather
+than one temperature throughout.
 
 ---
 

@@ -164,10 +164,12 @@ async def rescore_target(
     static_fields: Dict[str, Any],
     records_file,
     max_tokens: int,
+    temperature: float,
 ) -> Dict[str, int]:
     """Run one target over the pooled prompts and append its records."""
     model = ModelResource.from_string(
-        model_str, max_concurrency=50, max_tokens=max_tokens, temperature=1.0
+        model_str, max_concurrency=50, max_tokens=max_tokens,
+        temperature=temperature,
     )
 
     try:
@@ -192,6 +194,7 @@ async def rescore_target(
                 "target_label": label,
                 "target_model": model_str,
                 "target_max_tokens": max_tokens,
+                "target_temperature": temperature,
                 "prompt_id": prompt["prompt_id"],
                 "prompt_origin": prompt["prompt_origin"],
                 "prompt_occurrences": prompt["occurrences"],
@@ -263,6 +266,16 @@ async def main():
                              f"verdict (default {DEFAULT_JUDGE_ATTEMPTS}, 1 "
                              "disables). Judge failures correlate with the target, "
                              "so dropping them biases per-arm means.")
+    parser.add_argument("--target-temperature", type=float, default=0.7,
+                        help="Sampling temperature for every target (default "
+                             "0.7, the Open Character Training persona cards' "
+                             "recommendation). SURF's search loop uses 1.0; "
+                             "Phase B is a MEASUREMENT of the persona as "
+                             "deployed rather than a search for tail behaviour, "
+                             "so the nominal operating point has the stronger "
+                             "claim here. Keep it identical across targets. "
+                             "top_p/top_k/min_p cannot be sent from SURF at all "
+                             "and come from the serving endpoint instead.")
     parser.add_argument("--target-max-tokens", type=int, default=2048,
                         help="Response cap for every target (default 2048, matching "
                              "the search loop). Keep it identical across targets: a "
@@ -321,6 +334,8 @@ async def main():
     print(f"  Pooled prompts: {pooled_total} unique"
           f"{f' (using first {len(prompts)})' if args.limit else ''}")
     print(f"  Targets:        {', '.join(f'{k}={v}' for k, v in targets.items())}")
+    print(f"  Target sampling: temperature={args.target_temperature}, "
+          f"max_tokens={args.target_max_tokens} (top_p/top_k from the endpoint)")
     print(f"  Rubric:         {rubric_path.name} "
           f"(score_prompt={judge.score_prompt_name}, "
           f"n_assertions={judge.n_assertions})")
@@ -343,6 +358,7 @@ async def main():
                 "pooled_prompts_unique": pooled_total,
                 "prompts_used": len(prompts),
                 "target_max_tokens": args.target_max_tokens,
+                "target_temperature": args.target_temperature,
                 "started": datetime.now(timezone.utc).isoformat(),
                 **static_fields,
             },
@@ -367,6 +383,7 @@ async def main():
                 static_fields=static_fields,
                 records_file=records_file,
                 max_tokens=args.target_max_tokens,
+                temperature=args.target_temperature,
             )
 
     await judge.model_resource.shutdown()

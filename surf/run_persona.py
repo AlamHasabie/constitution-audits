@@ -32,7 +32,7 @@ import asyncio
 import re
 import sys
 import yaml
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from surf.em_loop.judge import (
@@ -84,6 +84,7 @@ async def run_single(
         buffer_size=args.buffer_size,
         candidates_per_iter=args.candidates,
         output_dir=output_dir,
+        target_temperature=args.target_temperature,
     )
 
     tag = f"{persona}/run_{run_id}"
@@ -157,6 +158,20 @@ async def main():
                              "result. Raise it well above the buffer size before "
                              "reading anything into attribute weights.")
     parser.add_argument("--buffer-size", type=int, default=5)
+    parser.add_argument("--target-temperature", type=float, default=0.7,
+                        help="Sampling temperature for the audited model "
+                             "(default 0.7). The Open Character Training persona "
+                             "cards recommend temperature=0.7 with top_p=0.9 and "
+                             "top_k disabled; SURF's own default is 1.0, which "
+                             "runs the persona hotter than its authors intend. "
+                             "A character audit makes a claim about dispositions, "
+                             "so the nominal operating point is the defensible "
+                             "one. Raise it to 1.0 if you specifically want a "
+                             "hotter target to surface tail behaviour during the "
+                             "search. NOTE: SURF cannot send top_p/top_k/min_p at "
+                             "all -- QueryParams has no such fields -- so those "
+                             "come from the serving endpoint. Set them there; "
+                             "scripts/serve_targets.sh documents how.")
     parser.add_argument("--runs", type=int, default=1,
                         help="Independent loops. Scores are high-variance with a "
                              "sparse signal, so >1 is usually worth more than more "
@@ -203,12 +218,42 @@ async def main():
     print(f"  Rubric: {rubric_path.name}")
     print(f"  {args.runs} runs x {args.iterations} iterations x {args.candidates} candidates")
     print(f"  {total} total candidates (~{total * 3} API calls)")
-    print(f"  Target: {args.target}")
+    print(f"  Target: {args.target} (temperature={args.target_temperature})")
     print(f"  Judge:  {args.judge}")
     print(f"  {'':8s}temperature={args.judge_temperature}, "
           f"max_tokens={args.judge_max_tokens}, attempts={args.judge_attempts}")
     print(f"  Output: {output_base}")
     print()
+
+    # Written before any API call, so a run that dies partway is still
+    # described. Decision 3 of the pilot spec requires sampling parameters in
+    # the report, and EMLoop itself records none.
+    import json
+    from surf.em_loop.records import git_provenance, sha256_file
+    (output_base / "run_config.json").write_text(
+        json.dumps(
+            {
+                "phase": "A",
+                "persona": args.persona,
+                "target_model": args.target,
+                "target_temperature": args.target_temperature,
+                "target_max_tokens": 2048,
+                "judge_model": args.judge,
+                "query_model": args.query_model,
+                "attributes": args.attributes,
+                "runs": args.runs,
+                "iterations": args.iterations,
+                "candidates_per_iter": args.candidates,
+                "buffer_size": args.buffer_size,
+                "rubric_file": str(rubric_path),
+                "rubric_sha256": sha256_file(rubric_path),
+                "started": datetime.now(timezone.utc).isoformat(),
+                **git_provenance(Path(__file__).resolve().parents[1]),
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
     results = await asyncio.gather(*[
         run_single(args.persona, i, str(rubric_path), args,
