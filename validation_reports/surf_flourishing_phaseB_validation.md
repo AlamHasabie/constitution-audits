@@ -157,7 +157,9 @@ adjudicate differently from the other arms' — both pairs of intervals overlap
 heavily, and base's point estimate runs backwards from the direction a home-ground
 effect would predict. This is the same reassurance §2 of the earlier Phase B report
 obtained on the raw scores, now reproduced on adjudicated labels: the three prompt
-sets behave as one pool.
+sets behave as one pool. (That report, `surf_flourishing_phaseB.md`, was deleted on
+2026-11-13; recover it with
+`git show 1a4086f:validation_reports/surf_flourishing_phaseB.md`.)
 
 Read in isolation Table 2 says about 60% of MiMo's flags do not survive adjudication,
 and that the surviving share is *higher* for flourishing than for base — so

@@ -241,9 +241,13 @@ neither does the pass.
 ## 2026-11-06-A — Phase B replicated three times: headline holds, attributions do not
 
 **Decision.** The Phase B flourishing-vs-base finding is reported as real. The
-per-assertion attribution finding in §4b of
-[`../validation_reports/surf_flourishing_phaseB.md`](../validation_reports/surf_flourishing_phaseB.md)
+per-assertion attribution finding in §4b of `validation_reports/surf_flourishing_phaseB.md`
 is withdrawn at the per-item level and reported only at cluster level.
+
+> **That report was deleted on 2026-11-13**, by decision, after the validation pass.
+> It is not gone: it is tracked, so `git show 1a4086f:validation_reports/surf_flourishing_phaseB.md`
+> recovers it. Every §-reference to it in this log and in
+> `surf/results/phaseB_mimo_x3/DESIGN.md` means a section of that file at that commit.
 
 **What was run.** All 651 Phase B (query, response) pairs re-rated three times by
 `XiaomiMiMo/MiMo-V2.6-Flash` at the settled settings — temperature 1.0,
