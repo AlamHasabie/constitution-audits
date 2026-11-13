@@ -1,0 +1,304 @@
+diff --git a/methodology/flourishing_decision_log.md b/methodology/flourishing_decision_log.md
+index 02c0bb0..381a29f 100644
+--- a/methodology/flourishing_decision_log.md
++++ b/methodology/flourishing_decision_log.md
+@@ -14,6 +14,7 @@ grep -n "^## 2026-10-29" methodology/flourishing_decision_log.md
+ 
+ | Entry | Date | Decision | Status |
+ |---|---|---|---|
++| [2026-11-05-A](#2026-11-05-a--targets-run-at-the-personas-nominal-sampling-point) | 2026-11-05 | Targets run at temperature 0.7, top_k off — the persona's nominal point | **Partially verified** — settings confirmed in place, effect not measured |
+ | [2026-11-04-A](#2026-11-04-a--mimo-as-the-pilot-judge) | 2026-11-04 | MiMo is the pilot judge; DeepSeek-Flash rejected on range | **Partially verified** — range measured, accuracy not |
+ | [2026-10-31-A](#2026-10-31-a--generated-rubrics-and-one-runner-per-persona) | 2026-10-31 | Rubrics generated, not hand-written; one runner per persona | **Verified** reproducible |
+ | [2026-10-29-C](#2026-10-29-c--constitution-has-15-items-not-17) | 2026-10-29 | Constitution has 15 items, not 17 | **Verified** against source |
+@@ -32,6 +33,79 @@ positive.
+ 
+ ---
+ 
++## 2026-11-05-A — Targets run at the persona's nominal sampling point
++
++**Decision.** The audited models are sampled at **temperature 0.7, top_p 0.9, top_k
++disabled**, which is what the Open Character Training persona cards recommend, rather
++than at SURF's inherited defaults. Added `--target-temperature` (default 0.7) to
++[`../surf/run_persona.py`](../surf/run_persona.py) and
++[`../surf/run_rescore.py`](../surf/run_rescore.py), and a `target_temperature`
++argument to `EMLoop`. `top_p` and `top_k` are set on the serving endpoint, because
++SURF cannot send them at all.
++
++**`EMLoop`'s own default stays 1.0, deliberately.** `run_tenets.py`,
++`run_conflict.py`, `run_honesty.py`, `run_tenet_sweep.py`, `em_loop/sweep.py` and the
++CLI all construct `EMLoop`, and they reproduce published audits. Lowering the class
++default would silently re-point their instrument — the same reasoning that left
++`OPUS_DIRECT_SCORE_PROMPT` alone in 2026-10-29-B. Only the two runners that are ours
++pass 0.7.
++
++**Why. Four layers disagreed, and nobody had checked which one won.**
++
++| Layer | Says | Source |
++|---|---|---|
++| Persona authors | `temperature=0.7, top_p=0.9, top_k=None, min_p=0.0` | persona repo README |
++| Base model config | `top_k=64, top_p=0.95`, no temperature | `generation_config.json` |
++| vLLM applied | `top_k=64, top_p=0.95` as server defaults | its own startup warning |
++| SURF sent | `max_tokens`, `temperature`, `stop` — nothing else | `QueryParams`, `core/models.py` |
++
++So the effective operating point was temperature 1.0 (SURF, explicit, beating any
++server default), top_p 0.95 and **top_k 64** — the last leaking in from gemma's own
++config, where the persona authors say to disable it. `QueryParams` has no `top_p`,
++`top_k` or `min_p` field, so those can only come from the endpoint.
++
++**Why it matters, and the narrow claim.** Judge variance is already the binding
++constraint on this pilot — MiMo's replicate spread reached 46 points — so a hotter
++target stacks a second noise source on the first. And the audit's claim is about
++*dispositions*, so a persona measured off its nominal point is a validity problem,
++not only a precision one. The deviation was identical across all three arms, so it
++never threatened the internal comparison; what it threatened was whether the result
++describes these personas as their authors intend them to be run.
++
++**Accepted cost, and a real argument against.** A hotter target makes tail behaviour
++likelier to appear at all, which is what a red-teaming search wants. Phase A *is* a
++search. The position taken is that Phase B is the primary result and a measurement,
++so the nominal point governs; running Phase A hotter is defensible but must then be
++recorded as a deliberate split rather than inherited by accident.
++
++**Incidental: Phase A recorded no parameters at all.** `EMLoop` writes
++`results.jsonl` and `summary.jsonl` and no configuration, so a Phase A run could not
++report its own sampling settings — which Decision 3 of the pilot spec requires.
++`run_persona.py` now writes `run_config.json` alongside, matching what
++`run_rescore.py` and `run_rater.py` already did.
++
++**Incidental: one candidate-loss path writes no artifact.**
++`loop.py:_generate_query` returns `None` without calling `_log_failure` when it is
++handed an empty attribute set. The per-iteration counters are printed to stdout but
++no failures row is written, so attrition can be invisible in the saved artifacts. Seen
++in practice: two smoke runs over the same 3-candidate configuration produced
++`num_candidates` 1 and 3, with no failures file in either. At 15 candidates per
++iteration that is a material fraction, and `summary.jsonl` is the only place it
++shows.
++
++**Status: partially verified.** The settings are confirmed in place —
++`results/smoke_20261105/run_config.json` records `target_temperature: 0.7`, and vLLM
++logs `{'top_k': -1, 'top_p': 0.9}` on startup. Not verified: that the nominal point
++yields different or better discrimination. Nothing here has been run at both settings
++over the same prompts, so the change rests on the persona cards and on the
++variance-stacking argument, not on measurement.
++
++**What would change it.** Phase A at 0.7 surfacing materially fewer threshold-crossing
++candidates than at 1.0, which would argue for the deliberate per-phase split rather
++than one temperature throughout.
++
++---
++
+ ## 2026-11-04-A — MiMo as the pilot judge
+ 
+ **Decision.** MiMo-V2.6-Flash is the judge for the Flourishing pilot, replacing the
+diff --git a/surf/.gitignore b/surf/.gitignore
+index ef593e3..da85581 100644
+--- a/surf/.gitignore
++++ b/surf/.gitignore
+@@ -10,3 +10,7 @@ build/
+ .mypy_cache/
+ .pytest_cache/
+ .ruff_cache/
++
++# Pilot run artifacts (scripts/)
++adapters/
++vllm_serve_*.log
+diff --git a/surf/run_persona.py b/surf/run_persona.py
+index 30017d3..4e66a03 100644
+--- a/surf/run_persona.py
++++ b/surf/run_persona.py
+@@ -32,7 +32,7 @@ import asyncio
+ import re
+ import sys
+ import yaml
+-from datetime import datetime
++from datetime import datetime, timezone
+ from pathlib import Path
+ 
+ from surf.em_loop.loop import EMLoop
+@@ -76,6 +76,7 @@ async def run_single(
+         buffer_size=args.buffer_size,
+         candidates_per_iter=args.candidates,
+         output_dir=output_dir,
++        target_temperature=args.target_temperature,
+     )
+ 
+     tag = f"{persona}/run_{run_id}"
+@@ -126,6 +127,20 @@ async def main():
+                              "result. Raise it well above the buffer size before "
+                              "reading anything into attribute weights.")
+     parser.add_argument("--buffer-size", type=int, default=5)
++    parser.add_argument("--target-temperature", type=float, default=0.7,
++                        help="Sampling temperature for the audited model "
++                             "(default 0.7). The Open Character Training persona "
++                             "cards recommend temperature=0.7 with top_p=0.9 and "
++                             "top_k disabled; SURF's own default is 1.0, which "
++                             "runs the persona hotter than its authors intend. "
++                             "A character audit makes a claim about dispositions, "
++                             "so the nominal operating point is the defensible "
++                             "one. Raise it to 1.0 if you specifically want a "
++                             "hotter target to surface tail behaviour during the "
++                             "search. NOTE: SURF cannot send top_p/top_k/min_p at "
++                             "all -- QueryParams has no such fields -- so those "
++                             "come from the serving endpoint. Set them there; "
++                             "scripts/serve_targets.sh documents how.")
+     parser.add_argument("--runs", type=int, default=1,
+                         help="Independent loops. Scores are high-variance with a "
+                              "sparse signal, so >1 is usually worth more than more "
+@@ -172,11 +187,41 @@ async def main():
+     print(f"  Rubric: {rubric_path.name}")
+     print(f"  {args.runs} runs x {args.iterations} iterations x {args.candidates} candidates")
+     print(f"  {total} total candidates (~{total * 3} API calls)")
+-    print(f"  Target: {args.target}")
++    print(f"  Target: {args.target} (temperature={args.target_temperature})")
+     print(f"  Judge:  {args.judge}")
+     print(f"  Output: {output_base}")
+     print()
+ 
++    # Written before any API call, so a run that dies partway is still
++    # described. Decision 3 of the pilot spec requires sampling parameters in
++    # the report, and EMLoop itself records none.
++    import json
++    from surf.em_loop.records import git_provenance, sha256_file
++    (output_base / "run_config.json").write_text(
++        json.dumps(
++            {
++                "phase": "A",
++                "persona": args.persona,
++                "target_model": args.target,
++                "target_temperature": args.target_temperature,
++                "target_max_tokens": 2048,
++                "judge_model": args.judge,
++                "query_model": args.query_model,
++                "attributes": args.attributes,
++                "runs": args.runs,
++                "iterations": args.iterations,
++                "candidates_per_iter": args.candidates,
++                "buffer_size": args.buffer_size,
++                "rubric_file": str(rubric_path),
++                "rubric_sha256": sha256_file(rubric_path),
++                "started": datetime.now(timezone.utc).isoformat(),
++                **git_provenance(Path(__file__).resolve().parents[1]),
++            },
++            indent=2,
++        ),
++        encoding="utf-8",
++    )
++
+     results = await asyncio.gather(*[
+         run_single(args.persona, i, str(rubric_path), args,
+                    str(output_base / f"run_{i}"))
+diff --git a/surf/run_rescore.py b/surf/run_rescore.py
+index 5bdc427..6915ddf 100644
+--- a/surf/run_rescore.py
++++ b/surf/run_rescore.py
+@@ -161,10 +161,12 @@ async def rescore_target(
+     static_fields: Dict[str, Any],
+     records_file,
+     max_tokens: int,
++    temperature: float,
+ ) -> Dict[str, int]:
+     """Run one target over the pooled prompts and append its records."""
+     model = ModelResource.from_string(
+-        model_str, max_concurrency=50, max_tokens=max_tokens, temperature=1.0
++        model_str, max_concurrency=50, max_tokens=max_tokens,
++        temperature=temperature,
+     )
+ 
+     try:
+@@ -189,6 +191,7 @@ async def rescore_target(
+                 "target_label": label,
+                 "target_model": model_str,
+                 "target_max_tokens": max_tokens,
++                "target_temperature": temperature,
+                 "prompt_id": prompt["prompt_id"],
+                 "prompt_origin": prompt["prompt_origin"],
+                 "prompt_occurrences": prompt["occurrences"],
+@@ -233,6 +236,16 @@ async def main():
+                              "off; an anthropic:-routed judge is a DIFFERENT "
+                              "instrument, not the same one faster.")
+     parser.add_argument("--judge-concurrency", type=int, default=20)
++    parser.add_argument("--target-temperature", type=float, default=0.7,
++                        help="Sampling temperature for every target (default "
++                             "0.7, the Open Character Training persona cards' "
++                             "recommendation). SURF's search loop uses 1.0; "
++                             "Phase B is a MEASUREMENT of the persona as "
++                             "deployed rather than a search for tail behaviour, "
++                             "so the nominal operating point has the stronger "
++                             "claim here. Keep it identical across targets. "
++                             "top_p/top_k/min_p cannot be sent from SURF at all "
++                             "and come from the serving endpoint instead.")
+     parser.add_argument("--target-max-tokens", type=int, default=2048,
+                         help="Response cap for every target (default 2048, matching "
+                              "the search loop). Keep it identical across targets: a "
+@@ -288,6 +301,8 @@ async def main():
+     print(f"  Pooled prompts: {pooled_total} unique"
+           f"{f' (using first {len(prompts)})' if args.limit else ''}")
+     print(f"  Targets:        {', '.join(f'{k}={v}' for k, v in targets.items())}")
++    print(f"  Target sampling: temperature={args.target_temperature}, "
++          f"max_tokens={args.target_max_tokens} (top_p/top_k from the endpoint)")
+     print(f"  Rubric:         {rubric_path.name} "
+           f"(score_prompt={judge.score_prompt_name}, "
+           f"n_assertions={judge.n_assertions})")
+@@ -308,6 +323,7 @@ async def main():
+                 "pooled_prompts_unique": pooled_total,
+                 "prompts_used": len(prompts),
+                 "target_max_tokens": args.target_max_tokens,
++                "target_temperature": args.target_temperature,
+                 "started": datetime.now(timezone.utc).isoformat(),
+                 **static_fields,
+             },
+@@ -332,6 +348,7 @@ async def main():
+                 static_fields=static_fields,
+                 records_file=records_file,
+                 max_tokens=args.target_max_tokens,
++                temperature=args.target_temperature,
+             )
+ 
+     await judge.model_resource.shutdown()
+diff --git a/surf/surf/em_loop/loop.py b/surf/surf/em_loop/loop.py
+index 5818451..97720cc 100644
+--- a/surf/surf/em_loop/loop.py
++++ b/surf/surf/em_loop/loop.py
+@@ -51,6 +51,7 @@ class EMLoop:
+         judge_concurrency: int = 20,
+         use_thinking: bool = True,
+         thinking_budget: int = 10000,
++        target_temperature: float = 1.0,
+     ):
+         """
+         Initialize the EM loop.
+@@ -71,6 +72,20 @@ class EMLoop:
+             judge_concurrency: Max concurrent calls to judge model
+             use_thinking: Whether to use extended thinking for judge
+             thinking_budget: Token budget for extended thinking
++            target_temperature: Sampling temperature for the TARGET model.
++
++                Defaults to 1.0, which is what this loop has always used. The
++                default is deliberately NOT lowered: run_tenets.py,
++                run_conflict.py, run_honesty.py and the cli sweep reproduce
++                published audits through this class, and changing the default
++                would silently re-point their instrument. Callers that audit a
++                model with a published recommended temperature should pass it
++                explicitly -- run_persona.py does.
++
++                Does not touch the judge (pinned at 1.0 in SingleJudgeSystem,
++                required for extended thinking) or the query model (1.0 for
++                prompt diversity, which is a search parameter rather than a
++                property of the model under test).
+         """
+         # Load rubric
+         self.rubric = load_rubric(rubric_path)
+@@ -104,11 +119,12 @@ class EMLoop:
+         )
+ 
+         # Initialize target model
++        self.target_temperature = target_temperature
+         self.target_model = ModelResource.from_string(
+             target_model,
+             max_concurrency=target_concurrency,
+             max_tokens=2048,
+-            temperature=1.0,
++            temperature=target_temperature,
+         )
+ 
+         # Initialize query generation model

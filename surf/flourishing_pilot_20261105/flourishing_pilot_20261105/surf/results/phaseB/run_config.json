@@ -1,0 +1,28 @@
+{
+  "phase": "B",
+  "sources": [
+    "results/phaseA_base/run_1",
+    "results/phaseA_flourishing/run_1",
+    "results/phaseA_sycophancy/run_1"
+  ],
+  "targets": {
+    "base": "http://localhost:8000/v1:google/gemma-3-4b-it",
+    "flourishing": "http://localhost:8000/v1:goodness",
+    "sycophancy": "http://localhost:8000/v1:sycophancy"
+  },
+  "pooled_prompts_unique": 217,
+  "prompts_used": 217,
+  "target_max_tokens": 2048,
+  "target_temperature": 0.7,
+  "started": "2026-11-05T09:39:43.046195+00:00",
+  "rubric_file": "rubrics/flourishing_banded.yaml",
+  "rubric_sha256": "50b6e6b0e9c2a582661c62ab613644c95bbe52aabf434df8cb42fd81065fa922",
+  "judge_model": "https://api.deepinfra.com/v1/openai:XiaomiMiMo/MiMo-V2.6-Flash",
+  "judge_temperature": 1.0,
+  "judge_thinking": false,
+  "judge_thinking_budget": null,
+  "score_prompt": "banded_attribution",
+  "n_assertions": 15,
+  "git_commit": "84f86edd68be5bfde910a5641dab7ea00dc5da80",
+  "git_dirty": true
+}

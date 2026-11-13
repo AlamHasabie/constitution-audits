@@ -1,0 +1,19 @@
+{
+  "phase": "A",
+  "persona": "flourishing",
+  "target_model": "http://localhost:8000/v1:goodness",
+  "target_temperature": 0.7,
+  "target_max_tokens": 2048,
+  "judge_model": "https://api.deepinfra.com/v1/openai:XiaomiMiMo/MiMo-V2.6-Flash",
+  "query_model": "https://api.deepinfra.com/v1/openai:meta-llama/Llama-3.3-70B-Instruct-Turbo",
+  "attributes": "seoirsem/CHUNKY-tulu3-SFT-25k-attributes",
+  "runs": 1,
+  "iterations": 5,
+  "candidates_per_iter": 15,
+  "buffer_size": 10,
+  "rubric_file": "rubrics/flourishing_banded.yaml",
+  "rubric_sha256": "50b6e6b0e9c2a582661c62ab613644c95bbe52aabf434df8cb42fd81065fa922",
+  "started": "2026-11-05T09:17:56.829995+00:00",
+  "git_commit": "84f86edd68be5bfde910a5641dab7ea00dc5da80",
+  "git_dirty": true
+}

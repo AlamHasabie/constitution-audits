@@ -1,0 +1,19 @@
+{
+  "phase": "rating",
+  "sources": [
+    "results/phaseA_flash/run_1",
+    "results/phaseA_tulu/run_1"
+  ],
+  "raters": {
+    "primary": "https://api.deepinfra.com/v1/openai:deepseek-ai/DeepSeek-V4.1-Flash-1017",
+    "mimo": "https://api.deepinfra.com/v1/openai:XiaomiMiMo/MiMo-V2.6-Flash"
+  },
+  "replicates": 2,
+  "pairs_pooled": 98,
+  "pairs_used": 98,
+  "started": "2026-11-04T10:45:47.412324+00:00",
+  "rubric_file": "rubrics\\flourishing_banded.yaml",
+  "rubric_sha256": "50b6e6b0e9c2a582661c62ab613644c95bbe52aabf434df8cb42fd81065fa922",
+  "git_commit": "952b1134e5be7b4ab4fc60b610a97d9ce8705099",
+  "git_dirty": true
+}
