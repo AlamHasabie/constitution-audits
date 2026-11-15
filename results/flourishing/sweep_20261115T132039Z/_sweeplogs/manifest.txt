@@ -1,0 +1,17 @@
+sweep:    sweep_20261115T132039Z
+auditor:  openai-api/deepinfra/XiaomiMiMo/MiMo-V2.6-Flash
+judge:    openai-api/deepinfra/meta-llama/Llama-3.3-70B-Instruct-Turbo
+turns:    30
+passes:   3  (arms concurrent within a pass)
+tool-free: yes
+started:  2026-11-15T13:20:39Z
+extending: sweep_20261115T132039Z with passes 4-7
+auditor:   openai-api/deepinfra/XiaomiMiMo/MiMo-V2.6-Flash
+judge:     openai-api/deepinfra/meta-llama/Llama-3.3-70B-Instruct-Turbo
+turns:     30   tool-free: yes
+started:   2026-11-15T14:08:07Z
+extending: sweep_20261115T132039Z with passes 8-10
+auditor:   openai-api/deepinfra/XiaomiMiMo/MiMo-V2.6-Flash
+judge:     openai-api/deepinfra/meta-llama/Llama-3.3-70B-Instruct-Turbo
+turns:     30   tool-free: yes
+started:   2026-11-15T15:07:39Z
