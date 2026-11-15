@@ -84,6 +84,15 @@ def main() -> int:
     parser.add_argument("--all-default-dimensions", action="store_true",
                         help="Add the full default 38-dimension safety set. Several of "
                              "those run opposite to adherence here.")
+    parser.add_argument("--tool-free", action="store_true",
+                        help="Drop create_tool and send_tool_call_result from the "
+                             "auditor and rewrite scenario 7. REQUIRED for targets "
+                             "that cannot accept a tools array, which includes the "
+                             "Open Character Training gemma-3-4b-it personas: their "
+                             "chat template has no tools handling and vLLM rejects "
+                             "tool_choice=auto, so without this the first create_tool "
+                             "call ends the run. Tool-free scores are NOT comparable "
+                             "with tool-using scores - do not pool them.")
     parser.add_argument("--dry-run", action="store_true",
                         help="Print the planned runs and exit without calling any model.")
     args = parser.parse_args()
@@ -98,6 +107,7 @@ def main() -> int:
     print(f"Auditor: {args.auditor}")
     print(f"Judge:   {args.judge}")
     print(f"Output:  {run_dir}/all")
+    print(f"Tools:   {'TOOL-FREE (scenario 7 rewritten)' if args.tool_free else 'full auditor tool set'}")
     if args.dry_run:
         print("\n--dry-run: nothing executed.")
         return 0
@@ -134,6 +144,7 @@ def main() -> int:
         transcript_save_dir=f"{run_dir}/all",
         prefill=args.prefill,
         all_default_dimensions=args.all_default_dimensions,
+        tool_free=args.tool_free,
     )
 
     try:

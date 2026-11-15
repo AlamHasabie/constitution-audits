@@ -19,3 +19,7 @@ surf/results/*
 !surf/results/agreement_1/
 !surf/results/phaseA_flash/
 !surf/results/phaseA_tulu/
+
+# Persona LoRA adapters downloaded by surf/scripts/fetch_persona_adapters.py
+# (604 MB for goodness + sycophancy; re-fetch rather than commit).
+adapters/
